@@ -1,0 +1,8 @@
+*.o
+*.hi
+XMonad.*
+*.errors
+*.state
+prompt-history
+xmonad-x86_64-linux
+System.IO
