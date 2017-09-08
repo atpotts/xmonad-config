@@ -91,25 +91,6 @@ myKeys = [
         ] ++ myPromptKeyMap cmdkey
 
 
--- myKeys conf = M.fromList $
---     [ ((cmdkey, xK_x               ), kill                                ) -- close window
---     , ((cmdkey,  xK_q              ), restart "xmonad" True               )
---     , ((cmdkey, xK_m               ), nextWS                              ) -- move to next workspace
---     , ((cmdkey, xK_n               ), prevWS                              ) -- move to prev workspace
---     , ((cmdkey .|. mod1Mask, xK_m  ), shiftToNext                         ) -- move window to next workspace
---     , ((cmdkey .|. mod1Mask, xK_n  ), shiftToPrev                         ) -- move window to prev workspace
---     , ((cmdkey, xK_o               ), windows W.swapMaster                ) -- push to master
---     , ((cmdkey, xK_i               ), windows W.focusMaster               )
---     , ((cmdkey, xK_h               ), sendMessage Shrink                  ) -- shrink the master area
---     , ((cmdkey, xK_comma           ), sendMessage (IncMasterN 1         ) )
---     , ((cmdkey, xK_period          ), sendMessage (IncMasterN (-1     ) ) )
---     , ((cmdkey, xK_j               ), windows W.focusDown                 ) -- swap the focused window with the next window
---     , ((cmdkey, xK_0               ), (setLayout $ XMonad.layoutHook conf ) ) --Reset layout to workspaces default
---     , ((cmdkey, xK_k               ), windows W.focusUp                   )  -- swap thefocused window with the previous window
---     , ((cmdkey, xK_l               ), sendMessage Expand                  ) -- expand the master area
---     , ((cmdkey .|. shiftMask, xK_q ), io (exitWith ExitSuccess          ) ) -- quit xmonad
---     , ((cmdkey .|. shiftMask, xK_t ), spawn "urxvtc"                      )
---     ]  
 
 runXmobar = spawnPipe $  home ".nix-profile/bin/xmobar"
                      /./ home ".xmobarrc"
