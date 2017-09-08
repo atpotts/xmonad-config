@@ -73,17 +73,6 @@ main = do
 
 myKeys :: [((KeyMask, KeySym), X ())]
 myKeys = [
-           -- ((cmdkey,xK_s),
-           --      spawn $ "dmenu_run"
-           --          -- /./"-l 0"                   -- 1 line (/./ -b bottom)
-           --          /./"-i"                     -- case insesnitive
-           --          /./"-fn \"Meslo LG L DZ-11\"" -- font
-           --          /./"-nb"  /=/ base2        -- bg
-           --          /./"-nf"  /=/ base0         -- foreground
-           --          /./"-p \">\""               -- prompt
-           --          /./"-sb"  /=/ yellow        -- selected background
-           --          /./"-sf"  /=/ base3        -- selected foreground
-           --          ),
 
           ((cmdkey,xK_d), kill),
           ((cmdkey, xK_backslash),sendMessage NextLayout)
