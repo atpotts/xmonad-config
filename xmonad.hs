@@ -98,7 +98,6 @@ main = do
           focusedBorderColor = base1
   }
 
-
 myKeys :: XConfig Layout -> PromptList
 myKeys conf =
     [ (["M-S-<Return>"], "Launch terminal", spawn $ XMonad.terminal conf)

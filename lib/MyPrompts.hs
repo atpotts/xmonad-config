@@ -4,10 +4,11 @@
 -- In addition, A general prompt can pull up the keybindings
 -- for the whole list of prompts.
 
+-- TODO: This was supposed to be a configuration, but has become a bit of a library
+-- as well. I should really factor out the two components
 module MyPrompts where
 
 import Colors
-import WindowNames
 
 import XMonad
 import XMonad.Prompt
@@ -18,47 +19,49 @@ import XMonad.Prompt.RunOrRaise
 import XMonad.Prompt.Shell
 import XMonad.Prompt.Window
 -- import XMonad.Prompt.Workspace
+import XMonad.Layout.WorkspaceDir
 
 import qualified Data.Map as M
 import Data.Char (toLower)
 import Data.Maybe (isJust,catMaybes)
-import Data.List (sortOn)
+import Data.List (sortOn,intercalate,sort)
 import Data.Function ((&))
 
+type PromptList = [([String],String,X ())]
+
 -- allWindows is of type X (Map String Window) - so we can change the name
-myPromptKeyMap k = promptMap k
-               $ myPrompts myXPConfig windowNames
-
-promptMap :: KeyMask -> [(KeyMask,KeySym,String,X ())] -> [((KeyMask,KeySym),X ())]
-promptMap k ps = map reprompt ps
-  where reprompt (m,s,_,x) = ((k .|. m,s),x)
+myKeyMap key conf promptlist = promptMap $
+        (return key, "", multiPrompt conf promptlist ) : promptlist 
 
 
-myPrompts :: XPConfig -> XWindowMap -> [(KeyMask,KeySym, String, X ())]
-myPrompts conf  windows = [
-          (noModMask, xK_semicolon, "",
-                      multiPrompt conf $ myPrompts conf windows),
-          (noModMask, xK_a, "Run or Raise",
+promptMap :: PromptList -> [(String,X ())]
+promptMap ps = concatMap reprompt ps
+  where reprompt (m,_,x) = map (,x) m
+
+
+myPrompts :: XPConfig -> XWindowMap -> PromptList  
+myPrompts conf  windows  = [
+          (["M-a"], "Run or Raise",
                       runOrRaisePrompt runConf),
-          (noModMask, xK_w, "Go to Window",
+          (["M-w"], "Go to window",
                       windowPrompt winConf Goto windows),
-          (shiftMask, xK_w, "Bring window to master",
+          (["M-S-w"], "Bring window to master",
                       windowPrompt winConf BringToMaster windows),
-          (noModMask, xK_VoidSymbol, "Bring window",
+          ([], "Bring window",
                       windowPrompt winConf Bring windows),
-          (noModMask, xK_VoidSymbol, "Bring a copy",
+          ([], "Bring a copy",
                       windowPrompt winConf BringCopy windows),
-          (noModMask, xK_s, "Run (sh)",
+          (["M-s"], "Run (sh)",
                       shellPrompt shellConf),
-          (shiftMask, xK_s, "Run (term)",
-                      prompt ("urxvt -e") termConf)
+          (["M-S-s"], "Run (term)",
+                      prompt "urxvt -e" termConf),
+           (["M-'"],"Change directory", changeDir conf)
           ]
   where shellConf = mkColor nohlconf yellow
         termConf  = mkColor nohlconf red
         winConf   = mkColor conf violet
         runConf   = mkColor conf green
         nohlconf = conf {alwaysHighlight = False}
-
 
 fuzzysearch :: Int -> String -> String -> Maybe Int
 fuzzysearch n [] _ = Just 0
@@ -87,12 +90,16 @@ myXPConfig = def {
 mkColor :: XPConfig -> String -> XPConfig
 mkColor x c = x{fgColor = c, bgHLight = c}
 
-multiPrompt :: XPConfig -> [(KeyMask,KeySym, String, X ())] -> X ()
+multiPrompt :: XPConfig -> PromptList -> X ()
 multiPrompt conf list = inputPromptWithCompl newconf "" 
                     completions ?+ promptFromTitle
 
         where promptMap = M.fromList
-                                $ map (\(_,_,title,prompt)->(title,prompt)) list
+                      $ map (\(key,title,prompt)->
+                              (title++if not (null key)
+                                      then " ("++intercalate ", " (sort key)++")"
+                                      else "",
+                                prompt)) list
 
               promptFromTitle t = case M.lookup t promptMap of
                               Just a -> a

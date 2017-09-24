@@ -12,15 +12,18 @@ windowNames :: X (M.Map String Window)
 windowNames = windowMap' windowNamer
 
 windowNamer :: WindowSpace -> Window -> X String
-windowNamer = anyWindowNamer . Just
+windowNamer ws w = anyWindowNamer (Just (id,ws)) id id w
 
-anyWindowNamer :: Maybe WindowSpace -> Window -> X String
-anyWindowNamer wss w = do
+type Formatter = String -> String
+
+anyWindowNamer :: Maybe (Formatter,WindowSpace)
+               -> Formatter -> Formatter -> Window -> X String
+anyWindowNamer wss fa ft w = do
                 app   <- runQuery className w
                 title <- getName w
-                return $ app++": "
-                       ++show title
+                return $ fa app++": "
+                       ++ft (show title)
                        ++case wss of
-                              Just ws -> " ("++tag ws++")"
+                              Just (fws, ws) -> " ("++fws (tag ws)++")"
                               _ -> ""
-
+    
