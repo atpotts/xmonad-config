@@ -54,8 +54,7 @@ myPrompts conf  windows  = [
           (["M-s"], "Run (sh)",
                       shellPrompt shellConf),
           (["M-S-s"], "Run (term)",
-                      prompt "urxvt -e" termConf),
-           (["M-'"],"Change directory", changeDir conf)
+                      prompt "urxvt -e" termConf)
           ]
   where shellConf = mkColor nohlconf yellow
         termConf  = mkColor nohlconf red

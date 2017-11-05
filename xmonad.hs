@@ -7,6 +7,7 @@
 import MyPrompts
 import Colors
 import WindowNames
+import SystemKeys
 
 import Projects
 
@@ -75,6 +76,7 @@ managementHooks = [
 
 main = do
       xmproc <- runXmobar
+      spawn "offlineimap"
       xmonad $ dynamicProjects projects $ docks defaultConfig {
           -- xmonad $ docks def {
           terminal   = "urxvt",
@@ -98,6 +100,7 @@ main = do
           focusedBorderColor = base1
   }
 
+
 myKeys :: XConfig Layout -> PromptList
 myKeys conf =
     [ (["M-S-<Return>"], "Launch terminal", spawn $ XMonad.terminal conf)
@@ -107,18 +110,6 @@ myKeys conf =
 
     , (["M-n"], "Reset window size", refresh)
 
-    -- Media keys
-    , (["<XF86AudioLowerVolume>"],"Vol-", spawn "amixer -D pulse set Master 2000-")
-    , (["<XF86AudioRaiseVolume>"], "Vol+", spawn "amixer -D pulse set Master 2000+")
-    , (["<XF86AudioMute>"], "Mute", spawn "amixer -D pulse set Master toggle")
-
-    -- , (["<XF86KbdBrightnessUp>"],"Keyboard Brightness Up",
-    --     spawn $  home ".nix-profile/bin/kbdlight" /./ "up")
-    -- , (["<XF86KbdBrightnessDown>"],"Keyboard Brightness Down",
-    --     spawn $  home ".nix-profile/bin/kbdlight" /./ "down")
-
-    , (["<XF86MonBrightnessUp>"],"Screen Brightness Up", spawn "xbacklight -inc +5")
-    , (["<XF86MonBrightnessDown>"],"Screen Brightness Down", spawn "xbacklight -inc -5")
     -- move focus up or down the window stack
     , (["M-j","M-<D>","M-<Tab>"],  "Next window", B.focusDown)
     , (["M-k","M-<U>","M-S-<Tab>"],"Previous window",B.focusUp  )
@@ -167,6 +158,8 @@ myKeys conf =
              Just x -> focusNext p x
         )
     ]
+    ++
+    systemKeys
     ++
     [(["M-"++show i],"Show window "++show i,
       do ws <- windowList <$> gets windowset

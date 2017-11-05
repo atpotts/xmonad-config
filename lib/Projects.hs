@@ -1,6 +1,7 @@
 module Projects where
 
 import MyPrompts
+import XMonad.Prompt.Directory
 
 import Graphics.X11.Types
 
@@ -8,6 +9,8 @@ import XMonad
 import XMonad.Prompt
 import XMonad.Prompt.Window (XWindowMap)
 import XMonad.Actions.DynamicProjects as P
+
+import System.FilePath
 
 dynamicProjects = P.dynamicProjects
 
@@ -18,10 +21,10 @@ projects =
                projectStartHook = Just $ do spawn "firefox"},
      Project { projectName = "haskell-spock",
                projectDirectory = "~/Desktop/spock",
-               projectStartHook = Just $ do spawn "emacsclient-snapshot -c"},
+               projectStartHook = Just $ do spawn "emacsclient -c"},
      Project { projectName = "dotfiles",
                projectDirectory = "~/.dot",
-               projectStartHook = Just $ do spawn "emacsclient-snapshot -c"
+               projectStartHook = Just $ do spawn "emacsclient -c"
                                             spawn "urxvt" }
      ]
 
@@ -30,5 +33,16 @@ projectPrompts conf = [
     (["M-p"],   "Go to project",            switchProjectPrompt conf),  
     (["M-S-p"], "Send to project",          shiftToProjectPrompt conf), 
     (["M-'"],   "Rename project",           renameProjectPrompt conf),  
-    (["M-S-'"], "Change project directory", changeProjectDirPrompt conf)
+    (["M-S-'"], "Change project directory", changeProjectDirPrompt conf),
+    (["M-g"],   "New Project from Directory", newDir conf switchProject),
+    (["M-S-g"],   "Window to new directory", newDir conf shiftToProject)
     ] 
+
+newDir :: XPConfig -> (Project -> X ()) -> X ()
+newDir conf s =  directoryPrompt conf "Directory: " (\x ->
+                    let fn = case takeFileName $ takeDirectory (x++"/") of
+                                ('.':xs) -> xs
+                                [] -> "scratch"
+                                xs -> xs
+                        p = Project fn x Nothing
+                    in s p >> activateProject p)
