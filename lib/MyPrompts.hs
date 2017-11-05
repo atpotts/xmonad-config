@@ -62,10 +62,10 @@ myPrompts conf  windows  = [
         runConf   = mkColor conf green
         nohlconf = conf {alwaysHighlight = False}
 
-fuzzysearch :: Int -> String -> String -> Maybe Int
+fuzzysearch :: Double -> String -> String -> Maybe Double
 fuzzysearch n [] _ = Just 0
 fuzzysearch n (q:qs) (x:xs)
-    | toLower x == toLower q = (n+) <$> fuzzysearch (n+1) qs xs
+    | toLower x == toLower q = ((sqrt n)+) <$> fuzzysearch 0 qs xs
     | otherwise              = fuzzysearch (n+1) (q:qs) (xs)
 fuzzysearch _ _ _ = Nothing
 
