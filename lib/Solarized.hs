@@ -1,0 +1,1 @@
+/home/alistairtpotts/.xmonad/lib/solarized-light.hs

@@ -7,8 +7,9 @@
 import MyPrompts
 import Colors
 import WindowNames
-import SystemKeys
+import SystemKeys hiding (Toggle)
 
+import qualified DynamicProjects as DP
 import Projects
 
 -- XMonad Modules
@@ -23,6 +24,8 @@ import XMonad.Util.EZConfig  (mkKeymap)
 
 import XMonad.Layout.Spacing (spacing)
 import XMonad.Layout.TwoPane
+import XMonad.Layout.MultiToggle
+import XMonad.Layout.MultiToggle.Instances
 
 import qualified XMonad.Layout.BoringWindows as B
 import XMonad.Layout.Minimize
@@ -45,21 +48,22 @@ import Data.Char
 import qualified Data.Map as M
 
 -- Layout Names
-myLayout = minimize (tall ||| twopane ||| wide ||| full)
+myLayout = mkToggle (single MIRROR) $ minimize (tall ||| twopane ||| full)
   where 
     incstep = 3/100
     startdivision = 1/2
     spc = spacing 10 
     tall    = spc $ Tall 1 incstep startdivision
     twopane = spc $ TwoPane incstep startdivision
-    wide    = spc $ Mirror tall
     full    = spc $ Full
 
+isMirror = isInfixOf "Mirror"
 layoutformatter s
-    | "Mirror" `isInfixOf` s = "━┯━"
     | "Full" `isInfixOf` s   = "   "
-    | "TwoPane" `isInfixOf` s = " ┃ "
-    | otherwise              = " ┠─"	
+    | "TwoPane" `isInfixOf` s =
+        if isMirror s then "━━━" else " ┃ "
+    | isMirror s = "━┯━"
+    | otherwise = " ┠─"	
 
 -- key overrides
 cmdkey = mod3Mask
@@ -68,6 +72,7 @@ cmdkey = mod3Mask
 a /./ b = a <> " " <> b
 -- for command line arguments
 a /=/ b = a <> " " <> "\"" <> b <> "\""
+a /&/ b = a <> " && " <> b
 
 managementHooks :: [ManageHook]
 managementHooks = [
@@ -107,6 +112,7 @@ myKeys conf =
     , (["M-d"],       "Close window", kill)
 
     , (["M-<Return>"],   "Next layout",  sendMessage NextLayout)
+    , (["M-\\"], "Toggle Mirror", sendMessage $ Toggle MIRROR)
 
     , (["M-n"], "Reset window size", refresh)
 
@@ -115,6 +121,19 @@ myKeys conf =
     , (["M-k","M-<U>","M-S-<Tab>"],"Previous window",B.focusUp  )
     , (["M-m"],                     "Go to master", B.focusMaster)
 
+    --media keys
+    , (["<XF86AudioLowerVolume>"],"Vol-", spawn "amixer set Master 2000-")
+    , (["<XF86AudioRaiseVolume>"], "Vol+", spawn "amixer set Master 2000+")
+    , (["<XF86AudioMute>"], "Mute", spawn "amixer set Master toggle")
+
+    -- , (["<XF86KbdBrightnessUp>"],"Keyboard Brightness Up",
+    --     spawn $  home ".nix-profile/bin/kbdlight" /./ "up")
+    -- , (["<XF86KbdBrightnessDown>"],"Keyboard Brightness Down",
+    --     spawn $  home ".nix-profile/bin/kbdlight" /./ "down")
+
+    , (["<XF86MonBrightnessUp>"],"Screen Brightness Up", spawn "xbacklight -inc +5")
+    , (["<XF86MonBrightnessDown>"],"Screen Brightness Down", spawn "xbacklight -inc -5")
+    
     -- modifying the window order
     , (["M-S-m"],           "Swap with master window", windows W.swapMaster)
     , (["M-S-j","M-S-<D>"], "Swap window next",        windows W.swapDown  )
@@ -137,17 +156,30 @@ myKeys conf =
               /./"then xmonad --recompile && xmonad --restart;"
               /./"else xmessage xmonad not in \\$PATH: \"$PATH\"; fi")
 
+    , (["M-S-q"], "Restart xmonad with a new colorscheme",
+        let lib x = home (".xmonad/lib/"++x)
+        in spawn $  "rm" /./ lib "Solarized.hs"
+              /&/ "ln -s" /./ lib switchcolor /./ lib "Solarized.hs"
+              /&/"if type xmonad;"
+                     /./"then xmonad --recompile && xmonad --restart;"
+                     /./"else xmessage xmonad not in \\$PATH: \"$PATH\"; fi")
     -- Projects
-    , (["M-C-<L>","M-C-h"], "Send to previous project", DO.shiftTo  Prev HiddenNonEmptyWS)
-    , (["M-C-<R>","M-C-l"], "Send to next project",     DO.shiftTo  Next HiddenNonEmptyWS)
-    , (["M-<L>","M-h"],     "Previous project",         DO.moveTo   Prev HiddenNonEmptyWS)
-    , (["M-<R>","M-l"],     "Next project",             DO.moveTo   Next HiddenNonEmptyWS)
-    , (["M-S-<L>","M-S-h"], "Swap project Left",        DO.swapWith Prev HiddenNonEmptyWS)
-    , (["M-S-<R>","M-S-l"], "Swap project Right",       DO.swapWith Next HiddenNonEmptyWS)
+    , (["M-C-<L>","M-C-h"], "Send to previous project", 
+        DO.shiftTo  Prev HiddenNonEmptyWS)
+    , (["M-C-<R>","M-C-l"], "Send to next project",     
+        DO.shiftTo  Next HiddenNonEmptyWS)
+    , (["M-<L>","M-h"],     "Previous project",         
+        DO.moveTo   Prev HiddenNonEmptyWS)
+    , (["M-<R>","M-l"],     "Next project",             
+        DO.moveTo   Next HiddenNonEmptyWS)
+    , (["M-S-<L>","M-S-h"], "Swap project Left",        
+        DO.swapWith Prev HiddenNonEmptyWS)
+    , (["M-S-<R>","M-S-l"], "Swap project Right",       
+        DO.swapWith Next HiddenNonEmptyWS)
 
     , (["M-b"],   "Minimize",   withFocused minimizeWindow)
     , (["M-S-b"], "Unminimize", sendMessage RestoreNextMinimizedWin)
-    , (["M-\\"], "Cycle within app", do
+    , (["M-<"], "Cycle within app", do
         ws <- gets windowset
         let p w1 w2 = do
                 w1g <- runQuery className w1
@@ -182,8 +214,9 @@ focusNext p s@W.Stack{W.up=up, W.down=down, W.focus=fs} = do
     case map snd $ filter (fst) applist of
          []    -> return () 
          (x:_) -> myFocus  x
+
 runXmobar = spawnPipe $  home ".nix-profile/bin/xmobar"
-                     /./ home ".xmonad/xmobarrc"
+                     /./ home (".xmonad/xmobarrc-"++colorscheme)
 
 
 myMoveTo :: Int -> W.Stack Window -> W.Stack Window
