@@ -1,4 +1,5 @@
 {-# LANGUAGE
+
   OverloadedStrings,
   TupleSections
 #-}
@@ -12,9 +13,18 @@ import SystemKeys hiding (Toggle)
 import qualified DynamicProjects as DP
 import Projects
 
+import ContribMod.Decoration (Theme(..),SubTheme(..),DecorationMsg(..),Shrinker(..))
+import ContribMod.Tabbed 
+import ContribMod.TabGroups
+
 -- XMonad Modules
+import qualified Data.Map as Map
+import Data.List (unfoldr)
+import Data.Maybe (catMaybes)
+
 import XMonad
 
+import XMonad.Util.Image
 import XMonad.Hooks.DynamicLog
 import XMonad.Util.Loggers
 
@@ -26,6 +36,7 @@ import XMonad.Layout.Spacing (spacing)
 import XMonad.Layout.TwoPane
 import XMonad.Layout.MultiToggle
 import XMonad.Layout.MultiToggle.Instances
+import XMonad.Layout.Groups (GroupsMessage(..))
 
 import qualified XMonad.Layout.BoringWindows as B
 import XMonad.Layout.Minimize
@@ -36,8 +47,6 @@ import XMonad.Actions.UpdatePointer
 
 import qualified XMonad.Layout.Groups as Gr 
 import qualified XMonad.Layout.Groups.Helpers as Gh
-import XMonad.Layout.Tabbed 
-import TabGroups
 
 import qualified XMonad.StackSet as W
 
@@ -52,6 +61,8 @@ import Data.List (isInfixOf,break)
 import Data.Char
 import qualified Data.Map as M
 
+activeborder = base1
+inactiveborder = base2
 -- Layout Names
 -- myLayout = mkToggle (single MIRROR) $ minimize (tall ||| twopane ||| full)
 --   where 
@@ -61,20 +72,131 @@ import qualified Data.Map as M
 --     tall    = spc $ Tall 1 incstep startdivision
 --     twopane = spc $ TwoPane incstep startdivision
 --     full    = spc $ Full
+defST = def {
+         winActiveColor = yellow,
+         winInactiveColor = inactiveborder,
+         winActiveBorderColor = activeborder,
+         winInactiveBorderColor = base3,
+         winActiveTextColor = base3,
+         winInactiveTextColor = base2 }
 
-myLayout = minimize $ tallTabs $ def { tabsTheme = def {
-         activeColor = yellow,
-         inactiveColor = base2,
+accentmap = M.fromList [
+          ("qutebrowser",yellow),
+          ("Firefox",yellow),
+          ("URxvt",base1),
+                    ("Gvim",green)
+          ] 
+
+themeWindow st w = do
+      app   <- runQuery className w
+      let color = accentcolors accentmap app
+          bx l r = [(box 2 10 l r, OffsetLeft 5 5  )]
+      wf <- withWindowSet (return . W.peek)
+      focus <- case wf of
+        Nothing -> return []
+        Just w' ->
+          if w==w' then return $ bx True True
+                   else do
+                     app' <- runQuery className w'
+                     return $ if app' == app
+                              then bx True False
+                              else bx False False
+
+      -- let focus Nothing = []
+      --     focus (Just w') | w == w' = [(diamondbitmap,CenterRight 10)]
+      --                     | Just app == appwf = [(emptydiamondbitmap,CenterRight 10)]
+                            
+      return . Just $ st {
+         winInactiveColor = color,
+         winActiveColor = color,
+         winActiveBorderColor = color,
+         winTitleIcons = focus }
+
+myTheme = def {
+         activeColor = winActiveColor defST,
+         inactiveColor = winInactiveColor defST,
          urgentColor = magenta,
-         activeBorderColor = yellow,
-         inactiveBorderColor = base3,
+         activeBorderColor = winActiveBorderColor defST,
+         inactiveBorderColor = winInactiveBorderColor defST,
          urgentBorderColor = base3,
          urgentTextColor = base02,
-         activeTextColor = base02,
-         inactiveTextColor = base02,
+         activeTextColor = winActiveTextColor defST,
+         inactiveTextColor = winInactiveTextColor defST,
          fontName = myFont,
-         decoHeight = 36
-}}
+         decoHeight = 44,
+
+         subThemeForWindow = themeWindow defST
+}
+
+box b n x y =
+  let   vborder = replicate b True
+        hborder = replicate b (replicate (n+2*b) True)
+        insides i = replicate (n-i) x ++ replicate (i) y
+  in hborder ++ [vborder ++ insides i ++ vborder | i <- [1..n]]  ++ hborder
+
+-- diamondbitmap = map (map (=='+'))
+--                [   "       ++       "   ,
+--                    "      ++++      "   ,
+--                    "     ++++++     "   ,
+--                    "    ++++++++    "   ,
+--                    "   ++++++++++   "   ,
+--                    "  ++++++++++++  "   ,
+--                    " ++++++++++++++ "   ,
+--                    "++++++++++++++++"   ,
+--                    " ++++++++++++++ "   ,
+--                    "  ++++++++++++  "   ,
+--                    "   ++++++++++   "   ,
+--                    "    ++++++++    "   ,
+--                    "     ++++++     "   ,
+--                    "      ++++      "   ,
+--                    "       ++       "   ]
+
+-- emptydiamondbitmap = map (map (=='+'))
+--                [   "       ++       "   ,
+--                    "      +  +      "   ,
+--                    "     +    +     "   ,
+--                    "    +      +    "   ,
+--                    "   +        +   "   ,
+--                    "  +          +  "   ,
+--                    " +            + "   ,
+--                    "+              +"   ,
+--                    " +            + "   ,
+--                    "  +          +  "   ,
+--                    "   +        +   "   ,
+--                    "    +      +    "   ,
+--                    "     +    +     "   ,
+--                    "      +  +      "   ,
+--                    "       ++       "   ]
+                   
+
+-- A shrinker for Tab Themes. This Shrinker will first cut word prefixes where appropriate,
+-- Then reduce the number of words,
+-- And finally reduce the number of characters in the last word.
+-- The focus is on beginning by gettign rid of long paths
+data MyShrinker = MyShrinker [Char]
+instance Show MyShrinker where show _ = ""
+instance Read MyShrinker where readsPrec _ s = [(MyShrinker "",s)]        
+instance Shrinker MyShrinker where
+  shrinkIt _ "" = []
+  shrinkIt (MyShrinker ss) str = str : unfoldr (fmap (\x -> (x,x)) . shrnk) str 
+    where
+      shrnk :: String -> Maybe String
+      shrnk [] = Nothing
+      shrnk s =
+            case catMaybes $ map (\c -> fmap unwords $ dropfirst c $ words s) ss of
+                (x:_) -> Just x
+                [] -> case words s of
+                    [x] -> Just $ init x 
+                    xs -> Just . unwords $ init xs
+      dropfirst c [] = Nothing
+      dropfirst c (x:xs) | c `elem` x = Just $tail (dropWhile (/=c) x):xs
+                         | otherwise      = (x:) <$> dropfirst c xs
+
+myLayout = minimize $ tallTabs $ def {
+         tabsTheme = myTheme,
+         tabSpacing = 3}
+         `newTabsShrinker` MyShrinker "/"
+         
 
 isMirror x = isInfixOf "Mirror" x || isInfixOf "Horizontal" x
 layoutformatter s 
@@ -111,6 +233,10 @@ main = do
                                    <+> composeAll managementHooks,
           layoutHook = B.boringWindows $ avoidStruts myLayout,
           logHook    = xmobarHook xmproc,
+          startupHook = do
+              startupHook defaultConfig
+              spawn $ "xsetroot -solid \"" ++ base3 ++ "\""
+              sendMessage . ToAll . SomeMessage $ SetTheme myTheme,
           -- use Mod key
           modMask = cmdkey,
           workspaces = ["scratch"],
@@ -122,9 +248,9 @@ main = do
 
 
           -- Borders
-          borderWidth = 3,
-          normalBorderColor = base3,
-          focusedBorderColor = yellow
+          borderWidth = 2,
+          normalBorderColor = inactiveborder,
+          focusedBorderColor = activeborder
   }
 
 
@@ -280,19 +406,19 @@ windowList = W.current
 myLogTitle :: Logger
 myLogTitle = withWindowSet
            $ traverse (anyWindowNamer Nothing
-                         (\a -> xmobarColor (accentcolors a) inherit a) id)
+                         (\a -> xmobarColor (accentcolors accentmap a) inherit a) id)
            . W.peek
 
 
 xmobarHook xmproc = dynamicLogWithPP xmobarPP
   { ppOutput  = hPutStrLn xmproc
   , ppCurrent = \n ->
-        xmobarColor base3 (accentcolors n) $ pad $ pad n
+        xmobarColor base3 (accentcolors accentmap n) $ pad $ pad n
   , ppVisible = \x ->
         xmobarColor base0 inherit $ "["<> x <>"]"
   , ppHidden  = \x -> take 1 x
                    & pad
-                   & xmobarColor base2 (accentcolors x)
+                   & xmobarColor base2 (accentcolors accentmap x)
   , ppHiddenNoWindows = const ""
   , ppLayout = xmobarColor base2 base1 . layoutformatter
   , ppTitle = const ""

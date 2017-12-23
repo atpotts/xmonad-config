@@ -15,19 +15,21 @@
 --
 -----------------------------------------------------------------------------
 
-module TabGroups where
+module ContribMod.TabGroups where
 
 import XMonad hiding ((|||))
+
+import ContribMod.Tabbed
+import ContribMod.Decoration
 
 import qualified XMonad.Layout.Groups as G
 import XMonad.Layout.Groups.Helpers
 
 import XMonad.Layout.Spacing (spacing)
-import XMonad.Layout.Tabbed
+--import XMonad.Layout.TabBarDecoration
 import XMonad.Layout.Named
 import XMonad.Layout.Renamed
 import XMonad.Layout.LayoutCombinators
-import XMonad.Layout.Decoration
 import XMonad.Layout.Simplest
 
 
@@ -55,8 +57,6 @@ import XMonad.Layout.Simplest
 --   "XMonad.Doc.Extending".
 
 
-
-
 -- | Configuration data for the "tiled tab groups" layout
 data TiledTabsConfig s = TTC { vNMaster :: Int
                              , vRatio :: Rational
@@ -65,10 +65,16 @@ data TiledTabsConfig s = TTC { vNMaster :: Int
                              , hRatio :: Rational
                              , hIncrement :: Rational
                              , tabsShrinker :: s
-                             , tabsTheme :: Theme }
+                             , tabsTheme :: Theme
+                             , tabSpacing :: Int}
+
+newTabsShrinker :: TiledTabsConfig s -> y -> TiledTabsConfig y
+newTabsShrinker (TTC vn vr vi hn hr hi _ tt ts) sh =
+                TTC vn vr vi hn hr hi sh tt ts
 
 instance s ~ DefaultShrinker => Default (TiledTabsConfig s) where
-    def = TTC 1 0.5 (3/100) 1 0.5 (3/100) shrinkText def
+    def = TTC 1 0.5 (3/100) 1 0.5 (3/100) shrinkText def 0
+
 
 tallTabs c = tiledTabs c $  _vert c ||| _horiz c ||| Full
 
@@ -76,13 +82,15 @@ tallTabs c = tiledTabs c $  _vert c ||| _horiz c ||| Full
 
 {-tiledTabs (TTC s t) l = G.group (tabBar s t Top Simplest) l-}
 tiledTabs c = G.group (_tab c _tabs)
-_tab (TTC{tabsShrinker=s,tabsTheme=t}) = renamed [CutWordsLeft 1] . addTabs s t
+_tab (TTC{tabsShrinker=s,tabsTheme=t}) = renamed [CutWordsLeft 1] . addTabsAlways s t
+-- _tab (TTC{tabsShrinker=s,tabsTheme=t}) =
+--      renamed [CutWordsLeft 1] . tabBar s t Top
 _tabs = named "Tabs" Simplest
 
 -- _tab c l = renamed [CutWordsLeft 1] $ addTabs (tabsShrinker c) (tabsTheme c) l
 -- _tab c l = renamed [CutWordsLeft 1] $ addTabs (tabsShrinker c) (tabsTheme c) l
-_vert c = named "Vertical" $ spacing 10 $ Tall (vNMaster c) (vIncrement c) (vRatio c)
-_horiz c = named "Horizontal" $ spacing 10 $ Mirror $ Tall (hNMaster c) (hIncrement c) (hRatio c)
+_vert c = named "Vertical" $ spacing (tabSpacing c) $  Tall (vNMaster c) (vIncrement c) (vRatio c)
+_horiz c = named "Horizontal" $ spacing (tabSpacing c) $ Mirror $ Tall (hNMaster c) (hIncrement c) (hRatio c)
 
 -- | Increase the number of master groups by one
 increaseNMasterGroups :: X ()

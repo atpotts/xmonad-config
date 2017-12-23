@@ -6,17 +6,27 @@ base03, base02, base01, base00,
   colorscheme, switchcolor, myFont, accentcolors, addcolor) where
 
 import Data.Hashable (hashWithSalt)
+import qualified Data.Map as M
 import Solarized
 
 
 myFont :: String
-myFont = "xft:Meslo LG L DZ:size=11"
+-- myFont = "xft:Meslo LG L DZ:size=10"
+myFont = "xft:Inconsolata LGC for Powerline:size=10"
+-- myFont = "xft:Liberation Sans:size=10"
+-- myFont = "xft:TeX Gyre Adventor:size=10"
+-- myFont = "xft:Cabin Regular:size=10"
 
 
 -- emacs and firefox were the same color with the default salt
-accentcolors :: String -> String
-accentcolors n | n `elem` map show ([0..9]::[Int]) = addcolor $ read n
-               | otherwise = addcolor $ hashWithSalt 107 n
+accentcolors :: M.Map String String -> String -> String
+accentcolors m n =
+           case M.lookup n m of
+             Just x -> x
+             Nothing ->
+               if n `elem` map show ([0..9]::[Int])
+                  then addcolor $ read n
+                  else addcolor $ hashWithSalt 1897 n
 
 addcolor :: Int -> String
 addcolor n = case n `mod` 9 of
