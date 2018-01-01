@@ -1,5 +1,5 @@
 {-# LANGUAGE
-
+  TypeApplications,
   OverloadedStrings,
   TupleSections
 #-}
@@ -19,12 +19,13 @@ import ContribMod.TabGroups
 
 -- XMonad Modules
 import qualified Data.Map as Map
-import Data.List (unfoldr)
+import Data.List (unfoldr,stripPrefix)
 import Data.Maybe (catMaybes)
 
 import XMonad
 
 import XMonad.Util.Image
+import XMonad.Util.Font
 import XMonad.Hooks.DynamicLog
 import XMonad.Util.Loggers
 
@@ -50,6 +51,9 @@ import qualified XMonad.Layout.Groups.Helpers as Gh
 
 import qualified XMonad.StackSet as W
 
+import XMonad.Actions.Submap
+import XMonad.Actions.TagWindows
+
 -- Ordinary Haskell Modules
 import Control.Monad (forM)
 import Data.Monoid           ((<>))
@@ -60,6 +64,7 @@ import System.Exit (exitWith, ExitCode(ExitSuccess))
 import Data.List (isInfixOf,break)
 import Data.Char
 import qualified Data.Map as M
+
 
 activeborder = base1
 inactiveborder = base2
@@ -78,19 +83,21 @@ defST = def {
          winActiveBorderColor = activeborder,
          winInactiveBorderColor = base3,
          winActiveTextColor = base3,
-         winInactiveTextColor = base2 }
+         winInactiveTextColor = base02 }
 
 accentmap = M.fromList [
           ("qutebrowser",yellow),
           ("Firefox",yellow),
           ("URxvt",base1),
-                    ("Gvim",green)
+          ("Gvim",green),
+          ("Emacs",green),
+          ("scratch",magenta)
           ] 
 
 themeWindow st w = do
       app   <- runQuery className w
       let color = accentcolors accentmap app
-          bx l r = [(box 2 10 l r, OffsetLeft 5 5  )]
+          bx l r = [(box (scale 2) (scale 10) l r, OffsetLeft (scale 5) (scale 5)  )]
       wf <- withWindowSet (return . W.peek)
       focus <- case wf of
         Nothing -> return []
@@ -101,6 +108,10 @@ themeWindow st w = do
                      return $ if app' == app
                               then bx True False
                               else bx False False
+      mark <- getmarks w
+      let markaddon = case mark of
+            Nothing -> []
+            Just a -> [("["++[a]++"]",AlignRightOffset (scale 5))]
 
       -- let focus Nothing = []
       --     focus (Just w') | w == w' = [(diamondbitmap,CenterRight 10)]
@@ -110,7 +121,9 @@ themeWindow st w = do
          winInactiveColor = color,
          winActiveColor = color,
          winActiveBorderColor = color,
-         winTitleIcons = focus }
+         winTitleIcons = focus,
+         winTitleAddons = markaddon,
+         winInactiveTextColor = base2}
 
 myTheme = def {
          activeColor = winActiveColor defST,
@@ -123,7 +136,7 @@ myTheme = def {
          activeTextColor = winActiveTextColor defST,
          inactiveTextColor = winInactiveTextColor defST,
          fontName = myFont,
-         decoHeight = 44,
+         decoHeight = (scale 44),
 
          subThemeForWindow = themeWindow defST
 }
@@ -189,8 +202,8 @@ instance Shrinker MyShrinker where
                     [x] -> Just $ init x 
                     xs -> Just . unwords $ init xs
       dropfirst c [] = Nothing
-      dropfirst c (x:xs) | c `elem` x = Just $tail (dropWhile (/=c) x):xs
-                         | otherwise      = (x:) <$> dropfirst c xs
+      dropfirst c (x:xs) | c `elem` x = Just $ tail (dropWhile (/=c) x):xs
+                         | otherwise  = (x:) <$> dropfirst c xs
 
 myLayout = minimize $ tallTabs $ def {
          tabsTheme = myTheme,
@@ -199,7 +212,7 @@ myLayout = minimize $ tallTabs $ def {
          
 
 isMirror x = isInfixOf "Mirror" x || isInfixOf "Horizontal" x
-layoutformatter s 
+layoutformatter s
     | "Full" `isInfixOf` s   = "   "
     | "TwoPane" `isInfixOf` s =
         if isMirror s then "━━━" else " ┃ "
@@ -209,6 +222,29 @@ layoutformatter s
 -- key overrides
 cmdkey = mod3Mask
 
+-- WINDOW TAGS
+tagSubMap :: [(String,String)]
+tagSubMap = do
+      letter <- ['a'..'z']
+      [([letter],"Mark-"++[letter]),
+       ("M-"++[letter],"Mark-"++[letter])]
+makemarks c = submap $ mkKeymap c $
+  map (\(km,s) -> (km,do
+          w <- withWindowSet (return . W.peek)
+          case w of Nothing -> return ()
+                    Just w' -> do
+                      withTagged s (delTag s)
+                      addTag s w')
+       ) tagSubMap 
+tomarks c = submap $ mkKeymap c $ map (\(km,s) -> (km,focusUpTaggedGlobal s)) tagSubMap
+
+getmarks w = do
+  marks <- getTags w
+  case catMaybes $ map (stripPrefix "Mark-") marks of
+       [] -> return Nothing 
+       (x:_):_ -> return (Just x)
+
+--
 
 a /./ b = a <> " " <> b
 -- for command line arguments
@@ -221,6 +257,16 @@ managementHooks = [
     className =? "Xmessage" --> doFloat,
     resource =? "Dialog" --> doFloat
     ]
+
+retheme = sendMessage . ToAll . SomeMessage $ SetTheme myTheme
+
+type ColorStr=String
+
+setbg :: ColorStr -> ColorStr -> X()
+setbg fg bg = spawn $ "xsetroot"
+                   -- /./ "-bitmap" /=/ home ".xmonad/xbg.xbm"
+                   /./ "-solid" /=/ bg
+                   -- /./ "-bg" /=/ bg
 
 main = do
       xmproc <- runXmobar
@@ -235,8 +281,8 @@ main = do
           logHook    = xmobarHook xmproc,
           startupHook = do
               startupHook defaultConfig
-              spawn $ "xsetroot -solid \"" ++ base3 ++ "\""
-              sendMessage . ToAll . SomeMessage $ SetTheme myTheme,
+              setbg magenta base2
+              retheme,
           -- use Mod key
           modMask = cmdkey,
           workspaces = ["scratch"],
@@ -256,9 +302,9 @@ main = do
 
 myKeys :: XConfig Layout -> PromptList
 myKeys conf =
+    map (\(a,b,c)->(a,b,c>>retheme))$
     [ (["M-S-<Return>"], "Launch terminal", spawn $ XMonad.terminal conf)
     , (["M-d"],       "Close window", kill)
-
     , (["M-<Return>"],   "Next layout",  nextOuterLayout)
     -- , (["M-\\"], "Toggle Mirror", sendMessage $ Toggle MIRROR)
     , (["M-<Tab>"], "Cycle Group", sendMessage $ Gr.Modify Gr.focusDown)
@@ -266,10 +312,10 @@ myKeys conf =
     , (["M-\\"], "Move Through Group", 
                   sendMessage (Gr.Modify Gr.swapDown))
     , (["M-S-\\"], "Move Through Group", sendMessage $ Gr.Modify Gr.swapMaster)
-    , (["M-m"], "Move Through Group", sendMessage $ Gr.Modify Gr.focusMaster)
+    -- , (["M-m"], "Move Through Group", sendMessage $ Gr.Modify Gr.focusMaster)
 
-    , (["M-S-]"], "Move Through Group", sendMessage $ Gr.Modify Gr.moveToNewGroupDown)
-    , (["M-S-["], "Move Through Group", sendMessage $ Gr.Modify Gr.moveToNewGroupUp)
+    , (["M-S-]"], "Create Group Above", sendMessage $ Gr.Modify Gr.moveToNewGroupDown)
+    , (["M-S-["], "Create Group Below", sendMessage $ Gr.Modify Gr.moveToNewGroupUp)
     , (["M-["],"Move To PreviousGroup", sendMessage $ Gr.Modify $ Gr.moveToGroupUp True)
       , (["M-]"],"Move to Next Group", sendMessage $ Gr.Modify $ Gr.moveToGroupDown True)
 
@@ -281,26 +327,28 @@ myKeys conf =
     -- , (["M-m"],                     "Go to master", B.focusMaster)
     , (["M-j","M-<D>"],  "Next window", sendMessage $ Gr.Modify Gr.focusGroupDown)
     , (["M-k","M-<U>"],"Previous window",sendMessage $ Gr.Modify Gr.focusGroupUp  )
-    , (["M-m"],                     "Go to master", sendMessage $ Gr.Modify Gr.focusGroupMaster)
+    , (["M-e"], "Go to master", sendMessage $ Gr.Modify Gr.focusGroupMaster)
 
     --media keys
-    , (["<XF86AudioLowerVolume>"],"Vol-", spawn "amixer set Master 2000-")
-    , (["<XF86AudioRaiseVolume>"], "Vol+", spawn "amixer set Master 2000+")
-    , (["<XF86AudioMute>"], "Mute", spawn "amixer set Master toggle")
-
+    , (["<XF86AudioLowerVolume>","<F11>"],"Vol-", spawn "amixer set Master 4000-")
+    , (["<XF86AudioRaiseVolume>","<F12>"], "Vol+", spawn "amixer set Master 4000+")
+    , (["<XF86AudioMute>","<F10>"], "Mute", spawn "amixer set Master toggle")
+    , (["M-'"],"Go To Mark", tomarks conf)
+    , (["M-m"],"Mark",makemarks conf)
     -- , (["<XF86KbdBrightnessUp>"],"Keyboard Brightness Up",
     --     spawn $  home ".nix-profile/bin/kbdlight" /./ "up")
     -- , (["<XF86KbdBrightnessDown>"],"Keyboard Brightness Down",
     --     spawn $  home ".nix-profile/bin/kbdlight" /./ "down")
 
-    , (["<XF86MonBrightnessUp>"],"Screen Brightness Up", spawn "xbacklight -inc +5")
-    , (["<XF86MonBrightnessDown>"],"Screen Brightness Down", spawn "xbacklight -inc -5")
+    , (["<XF86MonBrightnessUp>","<F2>"],"Screen Brightness Up",
+         spawn "xbacklight -inc +10")
+    , (["<XF86MonBrightnessDown>","<F1>"],"Screen Brightness Down", spawn "xbacklight -inc -10")
     
     -- modifying the window order
     -- , (["M-S-m"],           "Swap with master window", windows W.swapMaster)
     -- , (["M-S-j","M-S-<D>"], "Swap window next",        windows W.swapDown  )
     -- , (["M-S-k","M-S-<U>"], "Swap window previous",    windows W.swapUp    )
-    , (["M-S-m"],           "Swap with master group",
+    , (["M-S-e"],           "Swap with master group",
                 sendMessage $ Gr.Modify Gr.swapGroupMaster)
     , (["M-S-j","M-S-<D>"], "Swap window next",
                 sendMessage $ Gr.Modify Gr.swapGroupUp)
@@ -325,13 +373,13 @@ myKeys conf =
               /./"then xmonad --recompile && xmonad --restart;"
               /./"else xmessage xmonad not in \\$PATH: \"$PATH\"; fi")
 
-    , (["M-S-q"], "Restart xmonad with a new colorscheme",
-        let lib x = home (".xmonad/lib/"++x)
-        in spawn $  "rm" /./ lib "Solarized.hs"
-              /&/ "ln -s" /./ lib switchcolor /./ lib "Solarized.hs"
-              /&/"if type xmonad;"
-                     /./"then xmonad --recompile && xmonad --restart;"
-                     /./"else xmessage xmonad not in \\$PATH: \"$PATH\"; fi")
+    -- , (["M-S-q"], "Restart xmonad with a new colorscheme",
+    --     let lib x = home (".xmonad/lib/"++x)
+    --     in spawn $  "rm" /./ lib "Solarized.hs"
+    --           /&/ "ln -s" /./ lib switchcolor /./ lib "Solarized.hs"
+    --           /&/"if type xmonad;"
+    --                  /./"then xmonad --recompile && xmonad --restart;"
+    --                  /./"else xmessage xmonad not in \\$PATH: \"$PATH\"; fi")
     -- Projects
     , (["M-C-<L>","M-C-h"], "Send to previous project", 
         DO.shiftTo  Prev HiddenNonEmptyWS)
@@ -385,7 +433,7 @@ focusNext p s@W.Stack{W.up=up, W.down=down, W.focus=fs} = do
          (x:_) -> myFocus  x
 
 runXmobar = spawnPipe $  home ".nix-profile/bin/xmobar"
-                     /./ home (".xmonad/xmobarrc-"++colorscheme)
+                     /./ home (".xmonad/xmobarrc")
 
 
 -- myMoveTo :: Int -> W.Stack Window -> W.Stack Window

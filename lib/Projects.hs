@@ -33,8 +33,8 @@ projectPrompts :: XPConfig -> PromptList
 projectPrompts conf = [
     (["M-p"],   "Go to project",            switchProjectPrompt conf),  
     (["M-S-p"], "Send to project",          shiftToProjectPrompt conf), 
-    (["M-'"],   "Rename project",           renameProjectPrompt conf),  
-    (["M-S-'"], "Change project directory", changeProjectDirPrompt conf),
+    (["M-x"],   "Rename project",           renameProjectPrompt conf),  
+    (["M-S-x"], "Change project directory", changeProjectDirPrompt conf),
     (["M-g"],   "New Project from Directory", newDir conf
                 $ \p -> switchProject p ),
     (["M-S-g"], "Window to new directory",   newDir conf

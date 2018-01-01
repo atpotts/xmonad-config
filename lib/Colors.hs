@@ -3,20 +3,14 @@ base03, base02, base01, base00,
   base0, base1, base2, base3,
   yellow, orange, red, magenta,
   violet, blue, cyan, green, inherit,
-  colorscheme, switchcolor, myFont, accentcolors, addcolor) where
+  myFont, accentcolors, addcolor,scale) where
 
 import Data.Hashable (hashWithSalt)
 import qualified Data.Map as M
-import Solarized
+import Colorscheme
 
-
-myFont :: String
--- myFont = "xft:Meslo LG L DZ:size=10"
-myFont = "xft:Inconsolata LGC for Powerline:size=10"
--- myFont = "xft:Liberation Sans:size=10"
--- myFont = "xft:TeX Gyre Adventor:size=10"
--- myFont = "xft:Cabin Regular:size=10"
-
+scale :: Integral a => a -> a
+scale x = round $ (fromIntegral x) * (size/14.0 :: Float)
 
 -- emacs and firefox were the same color with the default salt
 accentcolors :: M.Map String String -> String -> String
@@ -38,7 +32,7 @@ addcolor n = case n `mod` 9 of
  6 -> orange
  7 -> red
  8 -> magenta
- _ -> base01
+ _ -> base1
  
 
 
