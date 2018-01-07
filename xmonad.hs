@@ -26,12 +26,13 @@ import XMonad
 
 import XMonad.Util.Image
 import XMonad.Util.Font
-import XMonad.Hooks.DynamicLog
 import XMonad.Util.Loggers
-
-import XMonad.Hooks.ManageDocks
 import XMonad.Util.Run       (spawnPipe)
 import XMonad.Util.EZConfig  (mkKeymap)
+
+import XMonad.Hooks.ManageDocks
+import XMonad.Hooks.DynamicLog
+import XMonad.Hooks.EwmhDesktops
 
 import XMonad.Layout.Spacing (spacing)
 import XMonad.Layout.TwoPane
@@ -272,7 +273,9 @@ main = do
       xmproc <- runXmobar
       spawn "offlineimap"
       spawn $ home ".fehbg"
-      xmonad $ dynamicProjects projects $ docks defaultConfig {
+      xmonad $ dynamicProjects projects
+             $ ewmh
+             $ docks def {
           -- xmonad $ docks def {
           terminal   = "urxvt -e zsh",
           manageHook = manageDocks <+> manageHook defaultConfig
