@@ -76,18 +76,20 @@ myXPConfig = def {
            font = myFont,
            bgColor = base2,
            fgColor = base0,
-           fgHLight = base3,
-           bgHLight = base00,
-           position = Top,
-           promptBorderWidth = 0,
+           fgHLight = base03,
+           bgHLight = base2,
+           borderColor=base0,
+           position = CenteredAt 0.3 0.5,
+           promptBorderWidth = 2,
            height = 40,
+           maxComplRows = Just 10,
            changeModeKey = xK_Control_L,
            searchPredicate = boolfuzzysearch,
            alwaysHighlight = True
       }
 
 mkColor :: XPConfig -> String -> XPConfig
-mkColor x c = x{fgColor = c, bgHLight = c}
+mkColor x c = x{borderColor = c, fgHLight = c}
 
 multiPrompt :: XPConfig -> PromptList -> X ()
 multiPrompt conf list = inputPromptWithCompl newconf "" 

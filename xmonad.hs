@@ -187,9 +187,11 @@ box b n x y =
 -- Then reduce the number of words,
 -- And finally reduce the number of characters in the last word.
 -- The focus is on beginning by gettign rid of long paths
-data MyShrinker = MyShrinker [Char]
-instance Show MyShrinker where show _ = ""
-instance Read MyShrinker where readsPrec _ s = [(MyShrinker "",s)]        
+data MyShrinker = MyShrinker [Char] deriving (Read,Show)
+
+-- instance Show MyShrinker where show _ = ""
+-- instance Read MyShrinker where readsPrec _ s = [(MyShrinker "",s)]
+
 instance Shrinker MyShrinker where
   shrinkIt _ "" = []
   shrinkIt (MyShrinker ss) str = str : unfoldr (fmap (\x -> (x,x)) . shrnk) str 
@@ -273,7 +275,7 @@ main = do
       xmproc <- runXmobar
       spawn "offlineimap"
       spawn $ home ".fehbg"
-      xmonad $ dynamicProjects projects
+      xmonad $ dynamicProjects projects projectHooks
              $ ewmh
              $ docks def {
           -- xmonad $ docks def {
@@ -361,7 +363,6 @@ myKeys conf =
     -- resizing the master/slave ratio
     , (["M-S-=","M-="], "Expand master",    expandMasterGroups)
     , (["M--"],         "Shrink master",    shrinkMasterGroups)
-
     -- floating layer support
     , (["M-t"],"Unfloat",          withFocused $ windows . W.sink)
 

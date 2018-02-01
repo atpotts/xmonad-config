@@ -5,6 +5,8 @@ import XMonad.Prompt.Directory
 
 import Graphics.X11.Types
 
+import Data.Map.Strict (Map)
+import qualified Data.Map.Strict as Map
 import XMonad
 import XMonad.Prompt
 import XMonad.Prompt.Window (XWindowMap)
@@ -18,16 +20,15 @@ dynamicProjects = P.dynamicProjects
 projects :: [Project]
 projects =
     [Project { projectName = "scratch",
-               projectDirectory = "~/",
-               projectStartHook = Just $ do spawn "firefox"},
+               projectDirectory = "~/"},
      Project { projectName = "haskell-spock",
-               projectDirectory = "~/Desktop/spock",
-               projectStartHook = Just $ do spawn "emacsclient -c"},
+               projectDirectory = "~/Desktop/spock"},
      Project { projectName = "dotfiles",
-               projectDirectory = "~/.dot",
-               projectStartHook = Just $ do spawn "emacsclient -c"
-                                            spawn "urxvt" }
+               projectDirectory = "~/.dot"}
      ]
+
+projectHooks :: ProjectHookTable
+projectHooks = PHT $ Map.fromList [ ("xmonad", spawn "urxvt -c kak xmonad.hs")]
 
 projectPrompts :: XPConfig -> PromptList 
 projectPrompts conf = [
@@ -49,5 +50,5 @@ newDir conf s =  directoryPrompt conf "Directory: " (\x ->
                                 ('.':xs) -> xs
                                 [] -> "scratch"
                                 xs -> xs
-                        p = Project fn x Nothing
+                        p = Project fn x
                     in s p )
