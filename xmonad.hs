@@ -33,6 +33,7 @@ import XMonad.Util.EZConfig  (mkKeymap)
 import XMonad.Hooks.ManageDocks
 import XMonad.Hooks.DynamicLog
 import XMonad.Hooks.EwmhDesktops
+import XMonad.Hooks.Place
 
 import XMonad.Layout.Spacing (spacing)
 import XMonad.Layout.TwoPane
@@ -210,7 +211,7 @@ instance Shrinker MyShrinker where
 
 myLayout = minimize $ tallTabs $ def {
          tabsTheme = myTheme,
-         tabSpacing = 3}
+         tabSpacing = 10}
          `newTabsShrinker` MyShrinker "/"
          
 
@@ -255,10 +256,12 @@ a /=/ b = a <> " " <> "\"" <> b <> "\""
 a /&/ b = a <> " && " <> b
 
 managementHooks :: [ManageHook]
-managementHooks = [
-    resource =? "stalonetray" --> doIgnore,
+managementHooks = 
+    (resource =? "stalonetray" --> doIgnore) :
+    map (placeHook (fixed (0.5,0.5)) <+>) [
     className =? "Xmessage" --> doFloat,
-    resource =? "Dialog" --> doFloat
+    resource =? "Dialog" --> doFloat,
+    title =? "**popup**" --> doFloat
     ]
 
 retheme = sendMessage . ToAll . SomeMessage $ SetTheme myTheme
@@ -266,7 +269,7 @@ retheme = sendMessage . ToAll . SomeMessage $ SetTheme myTheme
 type ColorStr=String
 
 setbg :: ColorStr -> ColorStr -> X()
-setbg fg bg = spawn $ "xsetroot"
+setbg fg bg = spawn $ "hsetroot"
                    -- /./ "-bitmap" /=/ home ".xmonad/xbg.xbm"
                    /./ "-solid" /=/ bg
                    -- /./ "-bg" /=/ bg
@@ -340,6 +343,8 @@ myKeys conf =
     , (["<XF86AudioMute>","<F10>"], "Mute", spawn "amixer set Master toggle")
     , (["M-'"],"Go To Mark", tomarks conf)
     , (["M-m"],"Mark",makemarks conf)
+    , (["M-o"],"Open File", spawn "stouter")
+
     -- , (["<XF86KbdBrightnessUp>"],"Keyboard Brightness Up",
     --     spawn $  home ".nix-profile/bin/kbdlight" /./ "up")
     -- , (["<XF86KbdBrightnessDown>"],"Keyboard Brightness Down",
