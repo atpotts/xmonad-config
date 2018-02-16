@@ -20,7 +20,7 @@ import ContribMod.TabGroups
 -- XMonad Modules
 import qualified Data.Map as Map
 import Data.List (unfoldr,stripPrefix)
-import Data.Maybe (catMaybes)
+import Data.Maybe (catMaybes,fromMaybe)
 
 import XMonad
 
@@ -29,6 +29,8 @@ import XMonad.Util.Font
 import XMonad.Util.Loggers
 import XMonad.Util.Run       (spawnPipe)
 import XMonad.Util.EZConfig  (mkKeymap)
+
+import XMonad.Util.NamedWindows (getName)
 
 import XMonad.Hooks.ManageDocks
 import XMonad.Hooks.DynamicLog
@@ -63,7 +65,7 @@ import Data.Function((&))
 import Control.Arrow((>>>),(&&&),(***))
 import System.IO
 import System.Exit (exitWith, ExitCode(ExitSuccess))
-import Data.List (isInfixOf,break)
+import Data.List (isInfixOf,isPrefixOf,isSuffixOf,break)
 import Data.Char
 import qualified Data.Map as M
 
@@ -87,26 +89,51 @@ defST = def {
          winActiveTextColor = base3,
          winInactiveTextColor = base02 }
 
-accentmap = M.fromList [
-          ("qutebrowser",yellow),
-          ("Firefox",yellow),
-          ("URxvt",base1),
-          ("Gvim",green),
-          ("Emacs",green),
-          ("scratch",magenta)
-          ] 
+accentmap :: M.Map String String
+accentmap = M.fromList $ [
+          ("Terminal",blue),
+          ("scratch",magenta),
+          ("Shell",base01),
+          ("Editor",green),
+          ("Browser",yellow)
+
+          ]
+
+titleOverrides = [
+  ((isPrefixOf "zsh:"),"Shell"),
+  ((isSuffixOf "Kakoune"),"Editor"
+  )
+  ]
+
+groupOverrides = M.fromList [
+          ("Gvim","Editor"),
+          ("Emacs","Editor"),
+          ("qutebrowser","Browser"),
+          ("Firefox","Browser"),
+          ("URxvt","Terminal")
+ ]
+
+groupQuery :: Window -> X String
+groupQuery w = do
+  tit <- runQuery title w
+  let titles = map (\(f,v) -> if f tit then Just v else Nothing) titleOverrides
+  case catMaybes titles of
+    [] -> do
+      cls <- runQuery className w
+      return $ fromMaybe cls (M.lookup cls groupOverrides)
+    x:_ -> return x
 
 themeWindow st w = do
-      app   <- runQuery className w
+      app   <- groupQuery w
       let color = accentcolors accentmap app
-          bx l r = [(box (scale 2) (scale 10) l r, OffsetLeft (scale 5) (scale 5)  )]
+          bx l r = [(box (scale 2) (scale 10) l r,OffsetLeft (scale 5)(scale 5)  )]
       wf <- withWindowSet (return . W.peek)
       focus <- case wf of
         Nothing -> return []
         Just w' ->
           if w==w' then return $ bx True True
                    else do
-                     app' <- runQuery className w'
+                     app' <- groupQuery w'
                      return $ if app' == app
                               then bx True False
                               else bx False False
@@ -139,7 +166,6 @@ myTheme = def {
          inactiveTextColor = winInactiveTextColor defST,
          fontName = myFont,
          decoHeight = (scale 44),
-
          subThemeForWindow = themeWindow defST
 }
 
@@ -274,6 +300,8 @@ setbg fg bg = spawn $ "hsetroot"
                    /./ "-solid" /=/ bg
                    -- /./ "-bg" /=/ bg
 
+termcmd = "urxvt"
+
 main = do
       xmproc <- runXmobar
       spawn "offlineimap"
@@ -282,7 +310,7 @@ main = do
              $ ewmh
              $ docks def {
           -- xmonad $ docks def {
-          terminal   = "urxvt -e zsh",
+          terminal   = termcmd /./ "-e zsh",
           manageHook = manageDocks <+> manageHook defaultConfig
                                    <+> composeAll managementHooks,
           layoutHook = B.boringWindows $ avoidStruts myLayout,
@@ -408,12 +436,21 @@ myKeys conf =
     , (["M-S-,","M-<"], "Cycle within app", do
         ws <- gets windowset
         let p w1 w2 = do
-                w1g <- runQuery className w1
-                w2g <- runQuery className w2
+                w1g <- groupQuery w1
+                w2g <- groupQuery w2
                 return (w1g == w2g)
         case W.stack $ W.workspace $ W.current ws of
              Nothing -> return ()
-             Just x -> focusNext p x
+             Just x -> focusNext (return ()) p x
+        )
+    , (["M-a"], "Next Active Terminal", do
+        ws <- gets windowset
+        let p _ w1 = do
+                w1g <- groupQuery w1
+                return (w1g == "Shell")
+        case W.stack $ W.workspace $ W.current ws of
+             Nothing -> return ()
+             Just x -> focusNext (spawn termcmd) p x
         )
     ]
     ++
@@ -434,11 +471,11 @@ myKeys conf =
 myFocus :: Window -> X ()
 myFocus w = focus w >> (sendMessage $ RestoreMinimizedWin w)
 
-focusNext :: (Window -> Window -> X (Bool)) -> W.Stack Window -> X ()
-focusNext p s@W.Stack{W.up=up, W.down=down, W.focus=fs} = do
+focusNext :: X () -> (Window -> Window -> X (Bool)) -> W.Stack Window -> X ()
+focusNext def p s@W.Stack{W.up=up, W.down=down, W.focus=fs} = do
     applist <- sequence $ map (\x -> (,x) <$> p fs x) (down ++ reverse up)
     case map snd $ filter (fst) applist of
-         []    -> return () 
+         []    -> def
          (x:_) -> myFocus  x
 
 runXmobar = spawnPipe $  home ".nix-profile/bin/xmobar"
@@ -461,10 +498,18 @@ windowList = W.current
 
 
 myLogTitle :: Logger
-myLogTitle = withWindowSet
-           $ traverse (anyWindowNamer Nothing
-                         (\a -> xmobarColor (accentcolors accentmap a) inherit a) id)
-           . W.peek
+myLogTitle = withWindowSet $ traverse x . W.peek
+  where
+    x w = do
+      app   <- runQuery className w
+      thetitle <- runQuery title w
+      g <- groupQuery w
+      return $ xmobarColor (accentcolors accentmap g) inherit app++": "
+             ++ thetitle
+
+
+
+
 
 
 xmobarHook xmproc = dynamicLogWithPP xmobarPP

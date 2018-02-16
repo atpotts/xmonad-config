@@ -41,8 +41,6 @@ promptMap ps = concatMap reprompt ps
 
 myPrompts :: XPConfig -> XWindowMap -> PromptList  
 myPrompts conf  windows  = [
-          (["M-a"], "Run or Raise",
-                      runOrRaisePrompt runConf),
           (["M-w"], "Go to window",
                       windowPrompt winConf Goto windows),
           (["M-S-w"], "Bring window to master",
