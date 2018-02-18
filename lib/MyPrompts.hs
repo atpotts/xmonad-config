@@ -10,22 +10,19 @@ module MyPrompts where
 
 import Colors
 
-import XMonad
-import XMonad.Prompt
+import Data.Char (toLower)
+import Data.Function ((&))
+import Data.List (intercalate, sort, sortOn)
+import qualified Data.Map as M
+import Data.Maybe (catMaybes, isJust)
 import Graphics.X11.Types
-
+import XMonad
+import XMonad.Layout.WorkspaceDir
+import XMonad.Prompt
 import XMonad.Prompt.Input
 import XMonad.Prompt.RunOrRaise
 import XMonad.Prompt.Shell
 import XMonad.Prompt.Window
--- import XMonad.Prompt.Workspace
-import XMonad.Layout.WorkspaceDir
-
-import qualified Data.Map as M
-import Data.Char (toLower)
-import Data.Maybe (isJust,catMaybes)
-import Data.List (sortOn,intercalate,sort)
-import Data.Function ((&))
 
 type PromptList = [([String],String,X ())]
 
@@ -81,7 +78,7 @@ myXPConfig = def {
            promptBorderWidth = 2,
            height = 40,
            maxComplRows = Just 10,
-           changeModeKey = xK_Control_L,
+           -- changeModeKey = xK_Control_L,
            searchPredicate = boolfuzzysearch,
            alwaysHighlight = True
       }
@@ -90,32 +87,37 @@ mkColor :: XPConfig -> String -> XPConfig
 mkColor x c = x{borderColor = c, fgHLight = c}
 
 multiPrompt :: XPConfig -> PromptList -> X ()
-multiPrompt conf list = inputPromptWithCompl newconf "" 
-                    completions ?+ promptFromTitle
+multiPrompt conf list =
+  inputPromptWithCompl newconf "" completions ?+ promptFromTitle
+  where
+    promptMap =
+      M.fromList $
+      map
+        (\(key, title, prompt) ->
+           ( title ++
+             if not (null key)
+               then " (" ++ intercalate ", " (sort key) ++ ")"
+               else ""
+           , prompt))
+        list
 
-        where promptMap = M.fromList
-                      $ map (\(key,title,prompt)->
-                              (title++if not (null key)
-                                      then " ("++intercalate ", " (sort key)++")"
-                                      else "",
-                                prompt)) list
+    promptFromTitle t =
+      case M.lookup t promptMap of
+        Just a -> a
+        _ -> return ()
 
-              promptFromTitle t = case M.lookup t promptMap of
-                              Just a -> a
-                              _ -> return ()
+    completions k =
+      M.keys promptMap & map (\a -> (, a) <$> fuzzysearch 0 k a) & catMaybes &
+      sortOn fst &
+      map snd &
+      return
 
-              completions k = M.keys promptMap
-                   & map (\a -> (,a) <$> fuzzysearch 0 k a) 
-                   & catMaybes
-                   & sortOn fst
-                   & map snd
-                   & return
-
-              newconf = conf {promptKeymap =
-                                M.insert (noModMask, xK_space)
-                                         (setSuccess True >> setDone True)
-                                         (promptKeymap conf)
-                              }
-                
-                                               
+    newconf =
+      conf
+        { promptKeymap =
+            M.insert
+              (noModMask, xK_space)
+              (setSuccess True >> setDone True)
+              (promptKeymap conf)
+        }
 
