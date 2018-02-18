@@ -4,6 +4,10 @@
   TupleSections
 #-}
 
+-- This is
+-- A secnod line and I think that it will be much better if I allow it to run on
+-- and on and on.
+
 -- My Personal Customizations
 import MyPrompts
 import Colors
