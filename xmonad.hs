@@ -374,7 +374,7 @@ main = do
 
 myKeys :: XConfig Layout -> PromptList
 myKeys conf =
-  map (\(a, b, c) -> (a, b, c >> retheme)) (
+ -- map (\(a, b, c) -> (a, b, c >> retheme)) (
         [ (["M-S-<Return>"], "Launch terminal", spawn $ XMonad.terminal conf)
         , (["M-d"], "Close window", kill)
         , (["M-<Return>"], "Next layout", nextOuterLayout)
@@ -469,8 +469,10 @@ myKeys conf =
         , ( ["M-C-<R>", "M-C-l"]
           , "Send to next project"
           , DO.shiftTo Next HiddenNonEmptyWS)
-        , (["M-<L>", "M-h"], "Previous project", DO.moveTo Prev HiddenNonEmptyWS)
-        , (["M-<R>", "M-l"], "Next project", DO.moveTo Next HiddenNonEmptyWS)
+        , (["M-<L>", "M-h"], "Previous project",
+            DO.moveTo Prev HiddenNonEmptyWS >> retheme)
+        , (["M-<R>", "M-l"], "Next project",
+        		DO.moveTo Next HiddenNonEmptyWS >> retheme)
         , ( ["M-S-<L>", "M-S-h"]
           , "Swap project Left"
           , DO.swapWith Prev HiddenNonEmptyWS)
@@ -500,7 +502,7 @@ myKeys conf =
                      Nothing -> return ()
                      Just y -> focusNext (spawn $ groupSpawn x ) p y)
                 ) groups )
-  ) ++ systemKeys   -- ++
+         ++ systemKeys   -- ++
     -- [(["M-"++show i],"Show window "++show i,
     --   do ws <- windowList <$> gets windowset
     --      let w = take 1 $ drop (i-1) ws
