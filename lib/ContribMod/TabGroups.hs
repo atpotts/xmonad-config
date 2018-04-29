@@ -76,13 +76,14 @@ instance s ~ DefaultShrinker => Default (TiledTabsConfig s) where
     def = TTC 1 0.5 (3/100) 1 0.5 (3/100) shrinkText def 0
 
 
-tallTabs c = tiledTabs c $  _vert c ||| _horiz c ||| Full
+tallTabs n c = tiledTabs n c $  _vert c ||| _horiz c ||| Full
 
 -- _tabs = named "Tabs" Simplest
 
 {-tiledTabs (TTC s t) l = G.group (tabBar s t Top Simplest) l-}
-tiledTabs c = G.group (_tab c _tabs)
-_tab (TTC{tabsShrinker=s,tabsTheme=t}) = renamed [CutWordsLeft 1] . addTabsAlways s t
+tiledTabs n c = G.group (_tab n c _tabs)
+_tab n (TTC{tabsShrinker=s,tabsTheme=t}) =
+  renamed [CutWordsLeft 1] . createTabs Always (U n) s t
 -- _tab (TTC{tabsShrinker=s,tabsTheme=t}) =
 --      renamed [CutWordsLeft 1] . tabBar s t Top
 _tabs = named "Tabs" Simplest

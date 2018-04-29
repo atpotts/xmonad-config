@@ -109,6 +109,7 @@ data Theme =
           , fontName            :: String                   -- ^ Font name
           , decoWidth           :: Dimension                -- ^ Maximum width of the decorations (if supported by the 'DecorationStyle')
           , decoHeight          :: Dimension                -- ^ Height of the decorations
+          , tabBorderWidth         :: Dimension
           , windowTitleAddons   :: [(String, Align)]       -- ^ Extra text to appear in a window's title bar.
                                                            --    Refer to for a use "XMonad.Layout.ImageButtonDecoration"
           , windowTitleIcons    :: [([[Bool]], Placement)] -- ^ Extra icons to appear in a window's title bar.
@@ -136,6 +137,7 @@ instance Default Theme where
           , fontName            = "-misc-fixed-*-*-*-*-10-*-*-*-*-*-*-*"
           , decoWidth           = 200
           , decoHeight          = 20
+          , tabBorderWidth         = 2
           , windowTitleAddons   = []
           , windowTitleIcons    = []
           , subThemeForWindow   = \w -> return Nothing
@@ -163,7 +165,8 @@ data DecorationState =
 type DecoWin = (Maybe Window, Maybe Rectangle)
 type OrigWin = (Window,Rectangle)
 
--- | The 'Decoration' 'LayoutModifier'. This data type is an instance
+
+-- Thee 'Decoration' 'LayoutModif This data type is an instance
 -- of the 'LayoutModifier' class. This data type will be passed,
 -- together with a layout, to the 'ModifiedLayout' type constructor
 -- to modify the layout by adding decorations according to a
@@ -250,8 +253,8 @@ instance Eq a => DecorationStyle DefaultDecoration a
 -- decoration for each window. This way xmonad will restack the
 -- decorations and their windows accordingly. At the end we remove
 -- invisible\/stacked windows.
---
--- Message handling is quite simple: when needed we release the state
+-- Window ->f
+-- Message handling is quite f simple: when needed we release the stateocus
 -- component of the 'Decoration' 'LayoutModifier'. Otherwise we call
 -- 'handleEvent', which will call the appropriate 'DecorationStyle'
 -- methods to perform its tasks.
@@ -309,8 +312,9 @@ instance (DecorationStyle ds Window, Shrinker s) => LayoutModifier (Decoration d
 
           processState s = do let ndwrs = decos s
                               showDecos (map snd ndwrs)
-                              updateDecos sh t (font s) ndwrs
-                              return (dwrs_to_wrs ndwrs, Just (Decoration (I (Just (s {decos = ndwrs}))) sh t ds))
+                              updateDecos (W.focus stack) sh t (font s) ndwrs
+                              return (dwrs_to_wrs ndwrs,
+                                Just (Decoration (I (Just (s {decos = ndwrs}))) sh t ds))
 
     handleMess (Decoration (I (Just s@(DS {decos = dwrs}))) sh t ds) m
         | Just e <- fromMessage m                = do decorationEventHook ds s e
@@ -331,9 +335,11 @@ instance (DecorationStyle ds Window, Shrinker s) => LayoutModifier (Decoration d
 handleEvent :: Shrinker s => s -> Theme -> DecorationState -> Event -> X ()
 handleEvent sh t (DS dwrs fs) e
     | PropertyEvent {ev_window = w} <- e
-    , Just i <- w `elemIndex`             (map (fst . fst) dwrs) = updateDeco sh t fs (dwrs !! i)
+    , Just i <- w `elemIndex`    (map (fst . fst) dwrs) =
+        updateDeco (foldr const 0  (map (fst.fst) dwrs)) sh t fs (dwrs !! i)
     | ExposeEvent   {ev_window = w} <- e
-    , Just i <- w `elemIndex` (catMaybes $ map (fst . snd) dwrs) = updateDeco sh t fs (dwrs !! i)
+    , Just i <- w `elemIndex` (catMaybes $ map (fst . snd) dwrs) =
+        updateDeco w sh t fs (dwrs !! i)
 handleEvent _ _ _ _ = return ()
 
 -- | Mouse focus and mouse drag are handled by the same function, this
@@ -416,27 +422,26 @@ hideDecos = hideWindows . catMaybes . map fst
 deleteDecos :: [DecoWin] -> X ()
 deleteDecos = deleteWindows . catMaybes . map fst
 
-updateDecos :: Shrinker s => s -> Theme -> XMonadFont -> [(OrigWin,DecoWin)] -> X ()
-updateDecos s t f = mapM_ $ updateDeco s t f
+updateDecos :: Shrinker s => Window -> s -> Theme -> XMonadFont -> [(OrigWin,DecoWin)] -> X ()
+updateDecos focus s t f = mapM_ $ updateDeco focus s t f
 
 -- | Update a decoration window given a shrinker, a theme, the font
 -- structure and the needed 'Rectangle's
-updateDeco :: Shrinker s => s -> Theme -> XMonadFont -> (OrigWin,DecoWin) -> X ()
-updateDeco sh t fs ((w,_),(Just dw,Just (Rectangle _ _ wh ht))) = do
+updateDeco :: Shrinker s =>  Window -> s -> Theme -> XMonadFont -> (OrigWin,DecoWin) -> X ()
+updateDeco fw sh t fs ((w,_),(Just dw,Just (Rectangle _ _ wh ht))) = do
   nw  <- getName w
   ur  <- readUrgents
   dpy <- asks display
-  focus <- gets (W.peek . windowset)
+  -- focus <- gets (W.peek . windowset)
   mst <- (subThemeForWindow t) w
   let focusColor ic ac uc = 
-         case (focus, mst) of 
-            (Just fw, Just st) | fw == w -> (winActiveColor st, winActiveBorderColor st, winActiveTextColor st)
-                               | w `elem` ur -> uc
-                               | otherwise -> (winInactiveColor st, winInactiveBorderColor st, winInactiveTextColor st)
-            (Just fw, _)  | fw == w -> ac
-                          | w `elem` ur -> uc
-                          | otherwise -> ic
-            _ -> ic
+         case (mst) of
+            (Just st) | fw == w -> (winActiveColor st, winActiveBorderColor st, winActiveTextColor st)
+                      | w `elem` ur -> uc
+                      | otherwise -> (winInactiveColor st, winInactiveBorderColor st, winInactiveTextColor st)
+            (_)       | fw == w -> ac
+                      | w `elem` ur -> uc
+                      | otherwise -> ic
       (bc,borderc,tc) = focusColor (inactiveColor t, inactiveBorderColor t, inactiveTextColor t)
                                   (activeColor   t, activeBorderColor   t, activeTextColor   t)
                                   (urgentColor   t, urgentBorderColor   t, urgentTextColor   t)
@@ -450,9 +455,10 @@ updateDeco sh t fs ((w,_),(Just dw,Just (Rectangle _ _ wh ht))) = do
       strs = name : map fst atitles
       i_als = map snd aicons
       icons = map fst aicons
-  paintTextAndIcons dw fs wh ht 2 bc borderc tc bc als strs i_als icons
-updateDeco _ _ _ (_,(Just w,Nothing)) = hideWindow w
-updateDeco _ _ _ _ = return ()
+  paintTextAndIcons dw fs wh ht (tabBorderWidth t) bc borderc tc bc als strs i_als icons
+  
+updateDeco _ _ _ _ (_,(Just w,Nothing)) = hideWindow w
+updateDeco _ _ _ _ _ = return  ()
 
 -- | True if the window is in the 'Stack'. The 'Window' comes second
 -- to facilitate list processing, even though @w \`isInStack\` s@ won't
