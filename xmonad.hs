@@ -1,4 +1,3 @@
-{-# LANGUAGE TypeApplications  #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TupleSections     #-}
 {-# LANGUAGE RankNTypes        #-}
@@ -20,15 +19,16 @@ import           ContribMod.Tabbed
 import qualified DynamicProjects as DP
 import           MyPrompts
 import           Projects
+import           Shrinker
 import           SystemKeys hiding (Toggle)
 import           WindowNames
 import           WindowTags
-
+import           GroupMotions
+import qualified Groups as Grp
+import           Groups (GroupDefinition(GD))
 
 import XMonad
 import qualified XMonad.StackSet as W
-
-import           GroupMotions
 
 import           XMonad.Actions.CycleWS
 import qualified XMonad.Actions.DynamicWorkspaceOrder as DO
@@ -58,10 +58,9 @@ import           XMonad.Util.NamedWindows (getName)
 import           XMonad.Util.Run (spawnPipe)
 
 
-import           Control.Arrow ((&&&), (***), (>>>))
-
 -- Ordinary Haskell Modules
-import           Control.Monad (forM,replicateM_)
+import           Control.Arrow ((&&&), (***), (>>>))
+import           Control.Monad (forM_,replicateM_,when)
 import           Control.Applicative (liftA2)
 
 import           Data.Char
@@ -75,34 +74,24 @@ import qualified Data.Map as Map
 import           System.Exit (ExitCode(ExitSuccess), exitWith)
 import           System.IO
 
-activeborder = base01
+activeborder    = base01
 backgroundColor = base2
-inactiveborder = backgroundColor
+inactiveborder  = backgroundColor
+termcmd         = "urxvt"
+launchinterm    = ("urxvt -e "++)
+border :: Integral a => a
+border          = scale 4
 
-defST = def {
-         winActiveColor         = yellow,
-         winInactiveColor       = base0,
-         winActiveBorderColor   = activeborder,
-         winInactiveBorderColor = backgroundColor,
-         winActiveTextColor     = base3,
-         winInactiveTextColor   = backgroundColor}
-data GroupDefinition = GD
-  { groupName   :: String
-  , groupKeys   :: [String]
-  , groupSpawn  :: String
-  , groupColour :: String
-  , groupTitle  :: String -> Bool
-  , groupGroup  :: [String]
-  }
+
 
 groups :: [GroupDefinition]
 groups =
-  [ GD "Shell"    ["M-a"]   "urxvt" base00 (isPrefixOf "zsh:") []
-  , GD "Terminal" ["M-S-a"] "urxvt" blue   (const False) ["URxvt", "Termite"]
+  [ GD "Shell"    ["M-a"]   termcmd base00 (isPrefixOf "zsh:") []
+  , GD "Terminal" ["M-S-a"] termcmd blue   (const False) ["URxvt", "Termite"]
   , GD 
       "Editor"
       ["M-S-b"]
-      "urxvt -e kak"
+      (launchinterm "kak")
       green
       (\x -> "Kakoune" `isSuffixOf` x || "VIM" `isSuffixOf` x)
       ["Emacs"]
@@ -115,35 +104,16 @@ groups =
       ["qutebrowser", "Firefox", "Chromium"]
   ]
 
+titleOverrides = Grp.titleOverrides groups
+groupOverrides = Grp.groupOverrides groups
+groupQuery = Grp.groupQuery groups
+
 accentmap :: Map.Map String String
 accentmap =
   Map.fromList $
-  [ ("scratch", magenta) ] ++
-  map (groupName &&& groupColour) groups
+    ("scratch", magenta) : map (Grp.name &&& Grp.colour) groups
 
-titleOverrides = map (groupTitle &&& groupName) groups
-
-groupOverrides =
-  Map.fromList $ concatMap (\x -> (, groupName x) <$> groupGroup x) groups
-
-
-groupQuery :: Window -> X String
-groupQuery w = do
-  tit <- runQuery title w
-  let titles =
-        map
-          (\(f, v) ->
-             if f tit
-               then Just v
-               else Nothing)
-          titleOverrides
-  case catMaybes titles of
-    [] -> do
-      cls <- runQuery className w
-      return $ fromMaybe cls (Map.lookup cls groupOverrides)
-    x:_ -> return x
-
-setWindowBorder' ::(MonadReader XConf m, MonadIO m) => String -> Window -> m ()
+setWindowBorder' :: (MonadReader XConf m, MonadIO m) => String -> Window -> m ()
 setWindowBorder' c w = do
     XConf { display = d } <- ask
     ~(Just pc) <- io $ initColor d c
@@ -152,10 +122,10 @@ setWindowBorder' c w = do
 themeWindow bw st w = do
   app <- groupQuery w
   let color = accentcolors accentmap app
-      b l r = box 0 (scale 10) l r
+      b = box 0 (scale 10)
       bx m l r = if m then []
         else [(b True False, OffsetLeft bw bw),
-                (map (reverse) $ b l r, OffsetRight bw bw)]
+                (map reverse $ b l r, OffsetRight bw bw)]
   wf <- withWindowSet (return . W.peek)
   focus <-
     case wf of
@@ -175,7 +145,7 @@ themeWindow bw st w = do
           Nothing -> []
           Just a -> [("[" ++ [a] ++ "]", AlignRightOffset (scale 5))]
   isfocus <- (Just w ==) . W.peek <$> gets windowset
-  if isfocus then setWindowBorder' color w else return ()
+  when isfocus (setWindowBorder' color w)
   return . Just $
     st
       { winInactiveColor     = color
@@ -184,7 +154,6 @@ themeWindow bw st w = do
       , winTitleIcons        = focus
       , winTitleAddons       = markaddon
       }
-
 
 myTheme = def {
          activeColor         = winActiveColor defST,
@@ -197,40 +166,20 @@ myTheme = def {
          activeTextColor     = winActiveTextColor defST,
          inactiveTextColor   = winInactiveTextColor defST,
          fontName            = myFont,
-         decoHeight          = (scale 46),
-         tabBorderWidth      = scale 4,
-         subThemeForWindow   = themeWindow (scale 4) defST
+         decoHeight          = scale 46,
+         tabBorderWidth      = border,
+         subThemeForWindow   = themeWindow border defST
 }
 
 box b n x y =
   let vborder = replicate b True
       hborder = replicate b (replicate (n + 2 * b) True)
-      insides i = replicate (n - i) x ++ replicate (i) y
+      insides i = replicate (n - i) x ++ replicate i y
    in hborder ++ [vborder ++ insides i ++ vborder | i <- [1 .. n]] ++ hborder
-
-
-data MyShrinker = MyShrinker [Char] deriving (Read,Show)
-instance Shrinker MyShrinker where
-  shrinkIt _ "" = []
-  shrinkIt (MyShrinker ss) str = str : unfoldr (fmap (\x -> (x, x)) . shrnk) str
-    where
-      shrnk :: String -> Maybe String
-      shrnk [] = Nothing
-      shrnk s =
-        case catMaybes $ map (\c -> fmap unwords $ dropfirst c $ words s) ss of
-          (x:_) -> Just x
-          [] ->
-            case words s of
-              [x] -> Just $ init x
-              xs -> Just . unwords $ init xs
-      dropfirst c [] = Nothing
-      dropfirst c (x:xs)
-        | c `elem` x = Just $ tail (dropWhile (/= c) x) : xs
-        | otherwise = (x :) <$> dropfirst c xs
 
 myLayout =
   minimize $
-  tallTabs (scale 4) $
+  tallTabs border $
   def { tabsTheme = myTheme, tabSpacing = 10 } `newTabsShrinker` MyShrinker "/"
 
 isMirror x = isInfixOf "Mirror" x || isInfixOf "Horizontal" x
@@ -247,22 +196,8 @@ layoutformatter s
 -- key overrides
 cmdkey = mod3Mask
 
-motion :: XConfig l ->  [([String],String,Int -> X())] -> [([String],String,X())]
-motion cf xs = go 0 ["M-"] xs
-  where go n mask xs = map (\(a,b,c) -> (liftA2 (++) mask a,b,
-                                  c (if n==0 then 1 else n))) xs
-                  ++  [( map (++show i) mask
-                       ,"Prefix "++show i
-                       , submap . (mkKeymap cf) .
-                          concatMap (\(a,_ ,c) -> map (,c) a) $
-                            go (i+10*n) (nub ("":mask)) xs
-                        ) | i <- [0..9] ]
-
 a /./ b = a <> " " <> b
-
--- for command line arguments
 a /=/ b = a <> " " <> "\"" <> b <> "\""
-
 a /&/ b = a <> " && " <> b
 
 managementHooks :: [ManageHook]
@@ -270,14 +205,14 @@ managementHooks =
   (resource =? "stalonetray" --> doIgnore) :
   map
     (placeHook (fixed (0.5, 0.5)) <+>)
-    [ className =? "Xmessage" --> doFloat
-    , resource =? "Dialog" --> doFloat
-    , title =? "**popup**" --> doFloat
+    [ className =? "Xmessage"  --> doFloat
+    , resource  =? "Dialog"    --> doFloat
+    , title     =? "**popup**" --> doFloat
     ]
 
 retheme = sendMessage . ToAll . SomeMessage $ SetTheme myTheme
 
-type ColorStr=String
+type ColorStr = String
 
 setbg :: ColorStr -> ColorStr -> X ()
 setbg fg bg =
@@ -289,21 +224,6 @@ setbg fg bg =
   bg
                    -- /./ "-bg" /=/ bg
 
-termcmd = "urxvt"
-
-maybemod :: String -> String
-maybemod x@('<':_) = x
-maybemod x@('M':'-':_) = x
-maybemod xs = "M-"++ case xs of
-  [a] -> if isUpper a then ['S','-',toLower a] else [a]
-  xs' -> xs'
-
-expand :: [String] -> [String]
-expand xs = do
-  x <- xs
-  let q:qs = words x
-  qs' <- sequence (map (\x -> [maybemod x,x]) qs)
-  return . unwords $ maybemod q : qs'
 
 main = do
       xmproc <- runXmobar
@@ -325,19 +245,14 @@ main = do
               -- use Mod key
               modMask = cmdkey,
               workspaces = ["scratch"],
-            keys = \conf -> mkKeymap conf $
-                  myKeyMap "M-;" myXPConfig
-                        (myKeys conf
-                        ++ myPrompts myXPConfig windowNames
-                        ++ projectPrompts (mkColor myXPConfig blue)),
+              keys = \conf -> mkKeymap conf $
+                  myKeyMap "M-;" myXPConfig (
+                        myKeys conf
+                        ++ map (\(a,b,c)->(a,b,c >> retheme)) 
+                            ( myPrompts myXPConfig windowNames ++
+                              projectPrompts (mkColor myXPConfig blue))),
 
-            -- Borders
-            -- ker for Tab Themes. This Shri\n -> modgroups (replicateM_ n
-            -- fNext))
--- Then reduce the number of words,inally reduce the number of characters in the last word.
--- The focus is on beginning by gettign rid of long paths
---
-              borderWidth = scale 4,
+              borderWidth = border,
               normalBorderColor = inactiveborder,
               focusedBorderColor = inactiveborder
           }
@@ -401,22 +316,8 @@ myKeys conf =
      , spawn $
         "if type xmonad;" /./ "then xmonad --recompile && xmonad --restart;" /./
         "else xmessage xmonad not in \\$PATH: \"$PATH\"; fi")
-   , ( ["C-<L>", "C-h"]
-     , "Send to previous project"
-     , DO.shiftTo Prev HiddenNonEmptyWS)
-   , ( ["C-<R>", "C-l"]
-     , "Send to next project"
-     , DO.shiftTo Next HiddenNonEmptyWS)
-   , (["M-<L>", "h"], "Previous project",
-       DO.moveTo Prev HiddenNonEmptyWS)
-   , (["M-<R>", "l"], "Next project",
-       DO.moveTo Next HiddenNonEmptyWS)
-   , ( ["M-S-<L>", "H"]
-     , "Swap project Left"
-     , DO.swapWith Prev HiddenNonEmptyWS)
-   , ( ["M-S-<R>", "L"]
-     , "Swap project Right"
-     , DO.swapWith Next HiddenNonEmptyWS)
+
+
    , ( ["S-,", "M-<"]
      , "Cycle within app"
      , do ws <- gets windowset
@@ -424,22 +325,40 @@ myKeys conf =
                 w1g <- groupQuery w1
                 w2g <- groupQuery w2
                 return (w1g == w2g)
-          case W.stack $ W.workspace $ W.current ws of
-            Nothing -> return ()
-            Just x -> focusNext (return ()) p x)
+          forM_ (W.stack $ W.workspace $ W.current ws) $ \ x ->
+            focusNext (return ()) p x)
     ]
+    -- reapplying themes is necessary when switching groups
+    ++ (map (\(a,b,c) -> (a,b,c>>retheme))
+       [ ( ["C-<L>", "C-h"]
+         , "Send to previous project"
+         , DO.shiftTo Prev HiddenNonEmptyWS)
+       , ( ["C-<R>", "C-l"]
+         , "Send to next project"
+         , DO.shiftTo Next HiddenNonEmptyWS)
+       , (["M-<L>", "h"], "Previous project",
+           DO.moveTo Prev HiddenNonEmptyWS)
+       , (["M-<R>", "l"], "Next project",
+           DO.moveTo Next HiddenNonEmptyWS)
+       , ( ["M-S-<L>", "H"]
+         , "Swap project Left"
+         , DO.swapWith Prev HiddenNonEmptyWS)
+       , ( ["M-S-<R>", "L"]
+         , "Swap project Right"
+         , DO.swapWith Next HiddenNonEmptyWS)
+       ])
     -- Launch groups
       ++ ( map (\x ->
-          ( groupKeys x
-          , groupName x
+          ( Grp.keys x
+          , Grp.name x
           , do ws <- gets windowset
                let p _ w1 = do
                     w1g <- groupQuery w1
-                    return (w1g == groupName x)
+                    return (w1g == Grp.name x)
                case W.stack $ W.workspace $ W.current ws of
                  Nothing -> return ()
-                 Just y -> focusNext (spawn $ groupSpawn x ) p y)
-            ) groups ))
+                 Just y -> focusNext (spawn $ Grp.spawn x ) p y)
+            ) groups )
 
      ++ systemKeys
      ++ motion conf [
@@ -463,18 +382,22 @@ myKeys conf =
         -- Relative Motions -- groups
         --
         , ( ["S-["], "Create Group Above", \n -> (
-            modgroupsXn1 n (G.moveToGroupUp True) G.moveToNewGroupUp))
+            modgroupsXn1 n (G.moveToGroupUp True) $ do
+              G.moveToNewGroupUp
+              retheme))
         , ( ["S-]"], "Create Group Below", \n -> (
-            modgroupsXn1 n (G.moveToGroupDown True) G.moveToNewGroupDown))
+            modgroupsXn1 n (G.moveToGroupDown True) $ do
+              G.moveToNewGroupDown
+              retheme))
         , ( ["["], "Move to Group Above",  \n -> (
             modgroupsXn n $ G.moveToGroupUp True))
         , ( ["]"], "Move to Group Below",  \n -> (
             modgroupsXn n $ G.moveToGroupDown True))
         , (["j", "M-<D>"], "Next window", \n -> (
             modgroupsXn n $ G.focusGroupDown))
-        , (["k", "M-<U>"], "Previous window", \n -> (
-            modgroupsXn n $ G.focusGroupUp))
-     ]
+        , (["k", "M-<U>"], "Previous window", \n ->
+            modgroupsXn n $ G.focusGroupUp)
+     ])
 
 myFocus :: Window -> X ()
 myFocus w = focus w >> (sendMessage $ RestoreMinimizedWin w)
@@ -513,12 +436,11 @@ xmobarHook xmproc =
   dynamicLogWithPP
     xmobarPP
       { ppOutput = hPutStrLn xmproc
-      , ppCurrent = \n ->
-          xmobarColor base3 (accentcolors accentmap n) $ pad $ pad n
-      , ppVisible = \x ->
-          xmobarColor base0 inherit $ "[" <> x <> "]"
-      , ppHidden = \x ->
-          take 1 x & pad & xmobarColor base2 (accentcolors accentmap x)
+      , ppCurrent =
+          \n -> xmobarColor base3 (accentcolors accentmap n) $ pad $ pad n
+      , ppVisible = \x -> xmobarColor base0 inherit $ "[" <> x <> "]"
+      , ppHidden =
+          \x -> take 1 x & pad & xmobarColor base2 (accentcolors accentmap x)
       , ppHiddenNoWindows = const ""
       , ppLayout = xmobarColor base2 base1 . layoutformatter
       , ppTitle = const ""
@@ -532,3 +454,11 @@ xmobarHook xmproc =
 
 home x = "/home/alistairtpotts/" ++ x
 
+-- Default (unused) window config
+defST = def {
+   winActiveColor         = yellow,
+   winInactiveColor       = base0,
+   winActiveBorderColor   = activeborder,
+   winInactiveBorderColor = backgroundColor,
+   winActiveTextColor     = base3,
+   winInactiveTextColor   = backgroundColor}

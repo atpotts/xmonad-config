@@ -6,23 +6,44 @@
 
 -- TODO: This was supposed to be a configuration, but has become a bit of a library
 -- as well. I should really factor out the two components
-module MyPrompts where
-
+module MyPrompts (
+    myKeyMap,
+    promptMap,
+    fuzzysearch,
+    boolfuzzysearch,
+    XPConfig(..),
+    XWindowMap,
+    myXPConfig,
+    mkColor,
+    multiPrompt,
+    motion,
+    maybemod,
+    expand,
+    PromptList,
+    WindowPrompt,
+    myPrompts
+  )
+  where
+  
 import Colors
 
 import Data.Char (toLower)
 import Data.Function ((&))
-import Data.List (intercalate, sort, sortOn)
+import Data.List (intercalate, sort, sortOn, nub)
+import Data.Char (isUpper, toLower)
+import Control.Applicative (liftA2)
 import qualified Data.Map as M
 import Data.Maybe (catMaybes, isJust)
 import Graphics.X11.Types
 import XMonad
+import XMonad.Actions.Submap
 import XMonad.Layout.WorkspaceDir
 import XMonad.Prompt
 import XMonad.Prompt.Input
 import XMonad.Prompt.RunOrRaise
 import XMonad.Prompt.Shell
 import XMonad.Prompt.Window
+import XMonad.Util.EZConfig
 
 type PromptList = [([String],String,X ())]
 
@@ -34,6 +55,7 @@ myKeyMap key conf promptlist = promptMap $
 promptMap :: PromptList -> [(String,X ())]
 promptMap ps = concatMap reprompt ps
   where reprompt (m,_,x) = map (,x) m
+
 
 
 myPrompts :: XPConfig -> XWindowMap -> PromptList  
@@ -56,6 +78,7 @@ myPrompts conf  windows  = [
         winConf   = mkColor conf violet
         runConf   = mkColor conf green
         nohlconf = conf {alwaysHighlight = False}
+
 
 fuzzysearch :: Double -> String -> String -> Maybe Double
 fuzzysearch n [] _ = Just 0
@@ -121,3 +144,27 @@ multiPrompt conf list =
               (promptKeymap conf)
         }
 
+motion :: XConfig l ->  [([String],String,Int -> X())] -> [([String],String,X())]
+motion cf xs = go 0 ["M-"] xs
+  where go n mask xs = map (\(a,b,c) -> (liftA2 (++) mask a,b,
+                                  c (if n==0 then 1 else n))) xs
+                  ++  [( map (++show i) mask
+                       ,"Prefix "++show i
+                       , submap . (mkKeymap cf) .
+                          concatMap (\(a,_ ,c) -> map (,c) a) $
+                            go (i+10*n) (nub ("":mask)) xs
+                        ) | i <- [0..9] ]
+
+maybemod :: String -> String
+maybemod x@('<':_) = x
+maybemod x@('M':'-':_) = x
+maybemod xs = "M-"++ case xs of
+  [a] -> if isUpper a then ['S','-',toLower a] else [a]
+  xs' -> xs'
+
+expand :: [String] -> [String]
+expand xs = do
+  x <- xs
+  let q:qs = words x
+  qs' <- sequence (map (\x -> nub [maybemod x,x]) qs)
+  return . unwords $ maybemod q : qs'

@@ -119,8 +119,6 @@ data Theme =
 
 
 
-
-
 instance Read (Window -> X (Maybe SubTheme)) where
     readsPrec _ value = [(\w -> return Nothing, value)]
 

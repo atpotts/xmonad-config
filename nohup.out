@@ -1,0 +1,23 @@
+Error while parsing parameters: unknown option '-ds'
+Valid switches:
+-c <arg>: connect to given session
+-e <arg>: execute argument on client initialisation
+-E <arg>: execute argument on server initialisation
+-n : do not source kakrc files on startup
+-s <arg>: set session name
+-d : run as a headless session (requires -s)
+-p <arg>: just send stdin as commands to the given session
+-f <arg>: act as a filter, executing given keys on given files
+-i <arg>: backup the files on which a filter is applied using the given suffix
+-q : in filter mode, be quiet about errors applying keys
+-ui <arg>: set the type of user interface to use (ncurses, dummy, or json)
+-l : list existing sessions
+-clear : clear dead sessions
+-ro : readonly mode
+-help : display a help message and quit
+Kakoune forked to background, for session 'xmonad'
+send SIGTERM to process 4615 for closing the session
+Kakoune forked to background, for session 'xmonad'
+send SIGTERM to process 9039 for closing the session
+Kakoune forked to background, for session 'xmonad'
+send SIGTERM to process 9568 for closing the session
