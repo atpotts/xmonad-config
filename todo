@@ -1,0 +1,16 @@
+1. Proper vim key framework
+2. Launch in same window - launch in different window - launch in different tab
+3. Fix directory handling
+4. Fix color handlign
+5. Fix History
+6. If you are in the master pane and you merge the current pane with something,
+   decrement the number of panes in master.
+7. If you are in themaster pane and split - increment
+
+
+- sepearte bindings for:
+1. moving groups
+2. moving tabs
+
+2. swapping between groups
+

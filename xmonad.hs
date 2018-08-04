@@ -2,9 +2,7 @@
 {-# LANGUAGE TupleSections     #-}
 {-# LANGUAGE RankNTypes        #-}
 {-# LANGUAGE FlexibleContexts  #-}
--- This is
--- A secnod line and I think that it will be much better if I allow it to run on
--- and on and on.
+{-# LANGUAGE TypeApplications  #-}
 
 -- My Personal Customizations
 import           Colors
@@ -13,9 +11,14 @@ import           ContribMod.Decoration
   , Shrinker(..)
   , SubTheme(..)
   , Theme(..)
+  , SubThemeClass
+  , DefaultShrinker
+  , mkSubTheme
   )
+
 import           ContribMod.TabGroups
 import           ContribMod.Tabbed
+import           ContribMod.GroupNavigation
 import qualified DynamicProjects as DP
 import           MyPrompts
 import           Projects
@@ -31,6 +34,7 @@ import XMonad
 import qualified XMonad.StackSet as W
 
 import           XMonad.Actions.CycleWS
+import           XMonad.Actions.SinkAll
 import qualified XMonad.Actions.DynamicWorkspaceOrder as DO
 import           XMonad.Actions.Submap
 import           XMonad.Actions.UpdatePointer
@@ -60,7 +64,7 @@ import           XMonad.Util.Run (spawnPipe)
 
 -- Ordinary Haskell Modules
 import           Control.Arrow ((&&&), (***), (>>>))
-import           Control.Monad (forM_,replicateM_,when)
+import           Control.Monad (forM_,replicateM_,when,filterM,guard)
 import           Control.Applicative (liftA2)
 
 import           Data.Char
@@ -76,33 +80,40 @@ import           System.IO
 
 activeborder    = base01
 backgroundColor = base2
-inactiveborder  = backgroundColor
+inactiveborder  = base3
 termcmd         = "urxvt"
+myTerminal        = termcmd /./ "-e zsh"
 launchinterm    = ("urxvt -e "++)
 border :: Integral a => a
-border          = scale 4
+border          = scale 2
 
-
+WindowManage = WM {
+  onSame :: X(),
+  onOther :: X()
+}
+instance Default WindowManage where def = let r = return () in WM r r
 
 groups :: [GroupDefinition]
 groups =
-  [ GD "Shell"    ["M-a"]   termcmd base00 (isPrefixOf "zsh:") []
-  , GD "Terminal" ["M-S-a"] termcmd blue   (const False) ["URxvt", "Termite"]
+  [ GD "Shell"    ["t"] myTerminal base00 (isPrefixOf "zsh:") []
+  , GD "Terminal" ["T"] myTerminal blue   (const False) ["URxvt", "Termite"]
   , GD 
       "Editor"
-      ["M-S-b"]
+      ["e"]
       (launchinterm "kak")
       green
       (\x -> "Kakoune" `isSuffixOf` x || "VIM" `isSuffixOf` x)
       ["Emacs"]
   , GD
       "Browser"
-      ["M-b"]
+      ["b"]
       "qutebrowser"
       yellow
       (const False)
       ["qutebrowser", "Firefox", "Chromium"]
   ]
+
+
 
 titleOverrides = Grp.titleOverrides groups
 groupOverrides = Grp.groupOverrides groups
@@ -113,63 +124,27 @@ accentmap =
   Map.fromList $
     ("scratch", magenta) : map (Grp.name &&& Grp.colour) groups
 
-setWindowBorder' :: (MonadReader XConf m, MonadIO m) => String -> Window -> m ()
-setWindowBorder' c w = do
-    XConf { display = d } <- ask
-    ~(Just pc) <- io $ initColor d c
-    io $ setWindowBorder d w pc
 
-themeWindow bw st w = do
-  app <- groupQuery w
-  let color = accentcolors accentmap app
-      b = box 0 (scale 10)
-      bx m l r = if m then []
-        else [(b True False, OffsetLeft bw bw),
-                (map reverse $ b l r, OffsetRight bw bw)]
-  wf <- withWindowSet (return . W.peek)
-  focus <-
-    case wf of
-      Nothing -> return []
-      Just w' ->
-        if w == w'
-          then return $ bx True False False
-          else do
-            app' <- groupQuery w'
-            return $
-              if app' == app
-                then bx False False False
-                else bx False True False
-  mark <- getmarks w
-  let markaddon =
-        case mark of
-          Nothing -> []
-          Just a -> [("[" ++ [a] ++ "]", AlignRightOffset (scale 5))]
-  isfocus <- (Just w ==) . W.peek <$> gets windowset
-  when isfocus (setWindowBorder' color w)
-  return . Just $
-    st
-      { winInactiveColor     = color
-      , winActiveColor       = color
-      , winActiveBorderColor = color
-      , winTitleIcons        = focus
-      , winTitleAddons       = markaddon
-      }
-
+myTheme :: Theme MyTheme
 myTheme = def {
          activeColor         = winActiveColor defST,
          inactiveColor       = winInactiveColor defST,
          urgentColor         = magenta,
-         activeBorderColor   = winActiveBorderColor defST,
-         inactiveBorderColor = winInactiveBorderColor defST,
-         urgentBorderColor   = base3,
+         activeBorderColor   = blue,
+         inactiveBorderColor = base00,
+         urgentBorderColor   = base00,
          urgentTextColor     = base02,
          activeTextColor     = winActiveTextColor defST,
          inactiveTextColor   = winInactiveTextColor defST,
          fontName            = myFont,
-         decoHeight          = scale 46,
-         tabBorderWidth      = border,
-         subThemeForWindow   = themeWindow border defST
+         decoHeight          = scale 30,
+         tabBorderWidth      = border
 }
+
+data MyTheme = MyTheme deriving (Read, Typeable, Show)
+instance Default MyTheme where def = MyTheme
+instance SubThemeClass MyTheme where
+  mkSubTheme MyTheme = themeWindow border defST
 
 box b n x y =
   let vborder = replicate b True
@@ -177,10 +152,13 @@ box b n x y =
       insides i = replicate (n - i) x ++ replicate i y
    in hborder ++ [vborder ++ insides i ++ vborder | i <- [1 .. n]] ++ hborder
 
+ttc :: TiledTabsConfig MyTheme DefaultShrinker
+ttc =  (def::TiledTabsConfig MyTheme DefaultShrinker) { tabsTheme = myTheme, tabSpacing = 10 }
+
 myLayout =
   minimize $
-  tallTabs border $
-  def { tabsTheme = myTheme, tabSpacing = 10 } `newTabsShrinker` MyShrinker "/"
+  tallTabs 0 $ ttc
+      `newTabsShrinker` MyShrinker "/"
 
 isMirror x = isInfixOf "Mirror" x || isInfixOf "Horizontal" x
 
@@ -200,16 +178,6 @@ a /./ b = a <> " " <> b
 a /=/ b = a <> " " <> "\"" <> b <> "\""
 a /&/ b = a <> " && " <> b
 
-managementHooks :: [ManageHook]
-managementHooks =
-  (resource =? "stalonetray" --> doIgnore) :
-  map
-    (placeHook (fixed (0.5, 0.5)) <+>)
-    [ className =? "Xmessage"  --> doFloat
-    , resource  =? "Dialog"    --> doFloat
-    , title     =? "**popup**" --> doFloat
-    ]
-
 retheme = sendMessage . ToAll . SomeMessage $ SetTheme myTheme
 
 type ColorStr = String
@@ -223,20 +191,28 @@ setbg fg bg =
   "-solid" /=/
   bg
                    -- /./ "-bg" /=/ bg
+managementHooks :: [ManageHook]
+managementHooks =
+  (resource =? "stalonetray" --> doIgnore) :
+  map
+    (placeHook (fixed (0.5, 0.5)) <+>)
+    [ className =? "Xmessage"  --> doFloat
+    , resource  =? "Dialog"    --> doFloat
+    , title     =? "**popup**" --> doFloat
+    ]
 
 
 main = do
       xmproc <- runXmobar
-      spawn "offlineimap"
       spawn $ home ".fehbg"
       xmonad $ dynamicProjects projects projectHooks
              $ ewmh
              $ docks def {
-              terminal   = termcmd /./ "-e zsh",
+              terminal   = myTerminal,
               manageHook = manageDocks <+> manageHook defaultConfig
                                        <+> composeAll managementHooks,
               layoutHook = B.boringWindows $ avoidStruts myLayout,
-              logHook    = xmobarHook xmproc,
+              logHook    = xmobarHook xmproc <+> historyHook,
               startupHook = do
                   startupHook defaultConfig
                   setbg magenta backgroundColor
@@ -245,13 +221,12 @@ main = do
               -- use Mod key
               modMask = cmdkey,
               workspaces = ["scratch"],
-              keys = \conf -> mkKeymap conf $
-                  myKeyMap "M-;" myXPConfig (
-                        myKeys conf
-                        ++ map (\(a,b,c)->(a,b,c >> retheme)) 
-                            ( myPrompts myXPConfig windowNames ++
-                              projectPrompts (mkColor myXPConfig blue))),
-
+              keys =  \c -> myKeyMap "M-;" myXPConfig
+                      (sendMessage Gr.Refocus)
+                      (  myKeys c
+                      ++ myPrompts myXPConfig windowNames
+                      ++ projectPrompts (mkColor myXPConfig blue)
+                      ) c,
               borderWidth = border,
               normalBorderColor = inactiveborder,
               focusedBorderColor = inactiveborder
@@ -259,77 +234,53 @@ main = do
 
 myKeys :: XConfig Layout -> PromptList
 myKeys conf =
-  map (\(a, b, c) -> (expand a, b, c >> sendMessage Gr.Refocus)) ( -- c >> retheme
-   [  (["S-<Return>"], "Launch terminal", spawn $ XMonad.terminal conf)
-   , (["d"], "Close window", kill >> sendMessage Gr.Refocus)
-   , (["M-<Return>"], "Next layout", nextOuterLayout)
-      -- , (["M-\\"], "Toggle Mirror", sendMessage $ Toggle MIRROR)
-
-      -- , (["M-m"], "Move Through Group", sendMessage $ Gr.Modify Gr.focusMaster)
-
+   [ Action ["e"] "Switch to Workspace 0" $ do
+      w <- screenWorkspace 0
+      whenJust w (windows . W.view)
+   , Action ["u"] "switch to workspace 1" $ do
+      w <- screenWorkspace 1
+      whenJust w (windows . W.view)
+   , Action ["E"] "switch to workspace 0" $ do
+      w <- screenWorkspace 0
+      whenJust w (windows . W.shift)
+   , Action ["U"] "switch to workspace 1" $ do
+      w <- screenWorkspace 1
+      whenJust w (windows . W.shift)
+   , Action ["S-<Return>"] "Launch terminal" (spawn $ XMonad.terminal conf)
+   , Action ["d"] "Close window" (kill >> sendMessage Gr.Refocus)
+   , Action ["M-<Return>"] "Next layout" (nextOuterLayout)
       --media keys
-   , ( ["<XF86AudioLowerVolume>", "<F11>"]
-     , "Vol-"
-     , spawn "amixer set Master 4000-")
-   , ( ["<XF86AudioRaiseVolume>", "<F12>"]
-     , "Vol+"
-     , spawn "amixer set Master 4000+")
-   , (["<XF86AudioMute>", "<F10>"], "Mute", spawn "amixer set Master toggle")
-   , (["'"], "Go To Mark", tomarks conf)
-   , (["m"], "Mark", makemarks conf)
-   , (["o"], "Open File", spawn "stouter")
-      -- , (["<XF86KbdBrightnessUp>"],"Keyboard Brightness Up",
-      --     spawn $  home ".nix-profile/bin/kbdlight" /./ "up")
-      -- , (["<XF86KbdBrightnessDown>"],"Keyboard Brightness Down",
-      --     spawn $  home ".nix-profile/bin/kbdlight" /./ "down")
-   , ( ["<XF86MonBrightnessUp>", "<F2>"]
-     , "Screen Brightness Up"
-     , spawn "xbacklight -inc +10")
-   , ( ["<XF86MonBrightnessDown>", "<F1>"]
-     , "Screen Brightness Down"
-     , spawn "xbacklight -inc -10")
-      -- modifying the window order
-      -- , (["M-S-m"],           "Swap with master window", windows W.swapMaster)
-      -- , (["M-S-j","M-S-<D>"], "Swap window next",        windows W.swapDown  )
-      -- , (["M-S-k","M-S-<U>"], "Swap window previous",    windows W.swapUp    )
-   , ( ["E"]
-     , "Swap with master group"
-     , G.swapGroupMaster)
-   , ( ["J", "M-S-<D>"]
-     , "Swap window next"
-     , G.swapGroupUp)
-   , ( ["K", "M-S-<U>"]
-     , "Swap window previous"
-     , G.swapGroupDown)
+   , Action ["<XF86AudioLowerVolume>", "<F11>"] "Vol-" ( spawn "amixer set Master 4000-")
+   , Action ["<XF86AudioRaiseVolume>", "<F12>"] "Vol+" ( spawn "amixer set Master 4000+")
+   , Action ["<XF86AudioMute>", "<F10>"] "Mute" (spawn "amixer set Master toggle")
+   , Action ["'"] "Go To Mark" (tomarks conf)
+   , Action ["m"] "Mark" (makemarks conf)
+   , Action ["o"] "Open File" (spawn "stouter")
+   , Action ["C-o"] "Back" $ nextMatch BackwardsHistory (return True)
+   , Action ["C-i"] "Back" $ nextMatch ForwardsHistory (return True)
+   , Action ["<XF86MonBrightnessUp>", "<F2>"] "Screen Brightness Up" (spawn "xbacklight -inc +10")
+   , Action ["<XF86MonBrightnessDown>", "<F1>"] "Screen Brightness Down" (spawn "xbacklight -inc -10")
+   , Action ["E"] "Swap with master group" (G.swapGroupMaster)
+   , Action ["J", "M-S-<D>"] "Swap window next" (G.swapGroupUp)
+   , Action ["K", "M-S-<U>"] "Swap window previous" (G.swapGroupDown)
       -- resizing the master/slave ratio
-   , (["S-=", "M-="], "Expand master", expandMasterGroups)
-   , (["-"], "Shrink master", shrinkMasterGroups)
+   , Action ["S-=", "M-="] "Expand master" (expandMasterGroups)
+   , Action ["-"] "Shrink master" (shrinkMasterGroups)
       -- floating layer support
-   , (["t"], "Unfloat", withFocused $ windows . W.sink)
+   , Action ["t"] "Sink" (withFocused $ windows . W.sink)
+   , Action ["T"] "Sink all" (sinkAll)
       -- increase or decrease number of windows in the master area
-   , ([","], "Increment master", increaseNMasterGroups)
-   , (["."], "Decrement master", decreaseNMasterGroups)
+   , Action [","] "Increment master" (increaseNMasterGroups)
+   , Action ["."] "Decrement master" (decreaseNMasterGroups)
       -- quit, or restart
-   , (["S-<Backspace>"], "Quit xmonad", io (exitWith ExitSuccess))
-   , ( ["q"]
-     , "Restart xmonad"
-     , spawn $
+   , Action ["S-<Backspace>"] "Quit xmonad" (io (exitWith ExitSuccess))
+   , Action ["q"] "Restart xmonad" (spawn $
         "if type xmonad;" /./ "then xmonad --recompile && xmonad --restart;" /./
         "else xmessage xmonad not in \\$PATH: \"$PATH\"; fi")
-
-
-   , ( ["S-,", "M-<"]
-     , "Cycle within app"
-     , do ws <- gets windowset
-          let p w1 w2 = do
-                w1g <- groupQuery w1
-                w2g <- groupQuery w2
-                return (w1g == w2g)
-          forM_ (W.stack $ W.workspace $ W.current ws) $ \ x ->
-            focusNext (return ()) p x)
+   , Action ["S-,", "M-<"] "Cycle within app" cycleapp
     ]
-    -- reapplying themes is necessary when switching groups
-    ++ (map (\(a,b,c) -> (a,b,c>>retheme))
+    -- reapplying themes is necessary when switching workspace
+    ++ (map (\(a,b,c) -> Action a b (c >> retheme))
        [ ( ["C-<L>", "C-h"]
          , "Send to previous project"
          , DO.shiftTo Prev HiddenNonEmptyWS)
@@ -347,67 +298,83 @@ myKeys conf =
          , "Swap project Right"
          , DO.swapWith Next HiddenNonEmptyWS)
        ])
-    -- Launch groups
-      ++ ( map (\x ->
-          ( Grp.keys x
-          , Grp.name x
-          , do ws <- gets windowset
-               let p _ w1 = do
-                    w1g <- groupQuery w1
-                    return (w1g == Grp.name x)
-               case W.stack $ W.workspace $ W.current ws of
-                 Nothing -> return ()
-                 Just y -> focusNext (spawn $ Grp.spawn x ) p y)
-            ) groups )
-
      ++ systemKeys
-     ++ motion conf [
-        -- Absolute Motions
-          (["r"],  "Swap to Group N",     \n -> modgroups $ rotateInGroup n)
-        , (["S-r"],"Move to Group N",     \n -> modgroups $ moveToGroup n)
-        , (["c"],  "Move Group to N",     \n -> modgroups $ rotateTo n)
-        , (["S-c"],"Move to new group N", \n -> do
+     ++ 
+       -- Launch groups
+       [ Group ["a"] "Launch Group" cycleapp (
+            Action   ["a"] "Cycle" cycleapp
+            : flip map groups (\x ->
+                Action (Grp.keys x) (Grp.name x) $
+                     nextMatchOrDo BackwardsHistory
+                        (liftA2 (&&) inWorkSpace (Grp.inGroup x))
+                        (spawn $ Grp.spawn x))
+            ++ flip map groups (\x ->
+                Action (map (map toUpper) $ Grp.keys x) ("Spawn "++ Grp.name x)
+                    (spawn $ Grp.spawn x)))
+        , Motion ["f"] "Swap with window N" (\n -> modgroups (rotateInGroup n))
+        , Motion ["S-r"] "Move to Group N" (\n -> modgroups (moveToGroup n))
+        , Motion ["f"] "Focus to Group N" (\n -> modgroups (focusInGroup n))
+        , Motion ["c"] "Move Group to N" (\n -> modgroups (rotateTo n))
+        , Motion ["S-c"] "Move to new group N" (\n -> do
                                   modgroups (moveToGroup n)
                                   G.moveToNewGroupUp
                                   sendMessage Gr.Refocus )
-        , (["f"],  "Focus to Group N",    \n -> modgroups $ focusInGroup n)
-        , (["S-f"],"Focus to Group N",    \n -> modgroups $ focusN n)
+        , Motion ["S-f"] "Focus to Group N" (\n -> modgroups (focusN n))
+
+        , Action ["b"] "Breakout Group" (do
+            pullToMaster (ask >>= liftX . groupQuery))
 
         -- Relative Motions - internal
-        , (["<Tab>"]  , "Focus Next", \n ->  modgroupsn n fNext)
-        , (["S-<Tab>"], "Focus Prev", \n ->  modgroupsn n fPrev)
-        , (["\\"]     , "Swap Next" , \n ->  modgroupsn n sNext)
-        , (["S-\\"]   , "Swap Prev" , \n ->  modgroupsn n sPrev)
+        , Motion ["M-<Tab>"] "Focus Next" (modgroupsn fNext)
+        , Motion ["M-S-<Tab>"] "Focus Prev" (modgroupsn fPrev)
+        , Motion ["\\"] "Swap Next" (modgroupsn sNext)
+        , Motion ["S-\\"] "Swap Prev" (modgroupsn sPrev)
 
         -- Relative Motions -- groups
-        --
-        , ( ["S-["], "Create Group Above", \n -> (
-            modgroupsXn1 n (G.moveToGroupUp True) $ do
+        , Motion ["S-["] "Create Group Above" (
+            modgroupsXn1 (G.moveToGroupUp True) $ do
               G.moveToNewGroupUp
-              retheme))
-        , ( ["S-]"], "Create Group Below", \n -> (
-            modgroupsXn1 n (G.moveToGroupDown True) $ do
+              retheme)
+        , Motion ["S-]"] "Create Group Below" (
+            modgroupsXn1 (G.moveToGroupDown True) $ do
               G.moveToNewGroupDown
-              retheme))
-        , ( ["["], "Move to Group Above",  \n -> (
-            modgroupsXn n $ G.moveToGroupUp True))
-        , ( ["]"], "Move to Group Below",  \n -> (
-            modgroupsXn n $ G.moveToGroupDown True))
-        , (["j", "M-<D>"], "Next window", \n -> (
-            modgroupsXn n $ G.focusGroupDown))
-        , (["k", "M-<U>"], "Previous window", \n ->
-            modgroupsXn n $ G.focusGroupUp)
-     ])
+              retheme)
+        , Motion ["["] "Move to Group Above" (
+            modgroupsXn $ G.moveToGroupUp True)
+        , Motion ["]"] "Move to Group Below" (
+            modgroupsXn $ G.moveToGroupDown True)
+        , Motion ["j", "M-<D>"] "Next window" (
+            modgroupsXn G.focusGroupDown)
+        , Motion ["k", "M-<U>"] "Previous window" (
+            modgroupsXn G.focusGroupUp)
+      ]
+
+cycleapp = nextMatchWithThis BackwardsHistory $
+  do a <- inWorkSpace
+     if a then ask >>= (liftX . groupQuery)
+          else return "OtherWS"
+
+inWorkSpace :: Query Bool
+inWorkSpace = do
+  w <- ask
+  ws <- liftX $ gets windowset
+  return $ w `elem` (windowList ws)
+
+pullToMaster :: Eq a => Query a -> X()
+pullToMaster q = (withWindowSet $ traverse x . W.peek) >> return ()
+  where x w = do
+          ws <- gets windowset
+          let all = windowList ws
+          wg <- runQuery q w
+          ws' <- filterM (fmap (==wg) . runQuery q) all
+          if null ws' then return () else do
+                    sendMessage (Modify $ pullout ws')
+                    sendMessage Refocus
+                    retheme
+
 
 myFocus :: Window -> X ()
 myFocus w = focus w >> (sendMessage $ RestoreMinimizedWin w)
-
-focusNext :: X () -> (Window -> Window -> X (Bool)) -> W.Stack Window -> X ()
-focusNext def p s@(W.Stack fs up down) = do
-  applist <- sequence $ map (\x -> (, x) <$> p fs x) (down ++ reverse up)
-  case map snd $ filter (fst) applist of
-    [] -> def
-    (x:_) -> myFocus x
 
 runXmobar =
   spawnPipe $ home ".nix-profile/bin/xmobar" /./ home (".xmonad/xmobarrc")
@@ -462,3 +429,47 @@ defST = def {
    winInactiveBorderColor = backgroundColor,
    winActiveTextColor     = base3,
    winInactiveTextColor   = backgroundColor}
+
+-- Window Theming
+------------------
+setWindowBorder' :: (MonadReader XConf m, MonadIO m) => String -> Window -> m ()
+setWindowBorder' c w = do
+    XConf { display = d } <- ask
+    ~(Just pc) <- io $ initColor d c
+    io $ setWindowBorder d w pc
+
+themeWindow bw st w = do
+  app <- groupQuery w
+  let color = accentcolors accentmap app
+      b = box 0 (scale 5)
+      bx m l r = if m then []
+        else [(b True False, OffsetLeft bw bw),
+                (map reverse $ b l r, OffsetRight bw bw)]
+  wf <- withWindowSet (return . W.peek)
+  focus <-
+    case wf of
+      Nothing -> return []
+      Just w' ->
+        if w == w'
+          then return $ bx True False False
+          else do
+            app' <- groupQuery w'
+            return $
+              if app' == app
+                then bx False False False
+                else bx False True False
+  mark <- getmarks w
+  let markaddon =
+        case mark of
+          Nothing -> []
+          Just a -> [("[" ++ [a] ++ "]", AlignRightOffset (scale 5))]
+  isfocus <- (Just w ==) . W.peek <$> gets windowset
+  when isfocus (setWindowBorder' color w)
+  return . Just $
+    st
+      { winInactiveColor     = color
+      , winActiveColor       = color
+      , winActiveBorderColor = color
+      , winTitleIcons        = focus
+      , winTitleAddons       = markaddon
+      }

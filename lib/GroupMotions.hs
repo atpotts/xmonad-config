@@ -9,6 +9,7 @@ import XMonad.StackSet (Stack(..))
 import XMonad.Layout.Groups
 import Control.Monad (replicateM_)
 
+import qualified Data.Set as S
 import Data.Function ((&))
 import Control.Arrow (first,(>>>))
 
@@ -67,17 +68,16 @@ focusInGroup n = onFocusedZ (onZipper $ focusN n)
 modgroups :: (forall l a . Zipper (Group l a) -> Zipper (Group l a)) -> X()
 modgroups f = sendMessage (Modify (\_ a -> f a)) >> sendMessage Refocus
 
-modgroupsn :: Int
-           -> (forall l a . Zipper (Group l a) -> Zipper (Group l a))-> X()
-modgroupsn n f = sendMessage (Modify (\_ a -> iterate f a !! n))
+modgroupsn :: (forall l a . Zipper (Group l a) -> Zipper (Group l a)) -> Int -> X()
+modgroupsn f n = sendMessage (Modify (\_ a -> iterate f a !! n))
               >> sendMessage Refocus
 
-modgroupsXn :: Int -> X () -> X ()
-modgroupsXn n x = do
+modgroupsXn :: X () -> Int -> X ()
+modgroupsXn x n = do
   replicateM_ n x >> sendMessage Refocus
 
-modgroupsXn1 :: Int -> X () -> X () -> X ()
-modgroupsXn1 n x1 x2 = do
+modgroupsXn1 :: X () -> X () -> Int -> X ()
+modgroupsXn1 x1 x2 n = do
   replicateM_ (n-1) x1 >> x2 >> sendMessage Refocus
 
 -- Infrastructure for relative motions
@@ -96,13 +96,14 @@ focusFirst z = fromIndex (fst$toIndex z) 0
 
 focusLast z = fromTags $ f (fst $ toIndex z)
  where f [] = []
-       f (x:_) = [Right x]
+       f (x:[]) = [Right x]
        f (x:xs) = Left x : f xs
 
 moveZ :: (Zipper a -> Bool) -- first, work out whether to switch bounadris
       -> (Zipper a -> Zipper a) -- work to do within group
       -> (Zipper (Group l a) -> Zipper (Group l a)) --between groups
       -> Zipper (Group l a) -> Zipper (Group l a) --result
+
 moveZ p inside outside zipper =
     let runpred z = case p z of
           True -> (Just (),z)
@@ -114,8 +115,9 @@ moveZ p inside outside zipper =
 
 oz f = onFocusedZ (onZipper f)
 
-fNext = moveZ isLast focusDownZ (focusDownZ >>> oz focusFirst)
-fPrev = moveZ isFirst focusUpZ (focusUpZ >>> oz focusLast)
+fNext = oz focusDownZ -- moveZ isLast focusDownZ (focusDownZ >>> oz focusFirst)
+fPrev = oz focusUpZ
+--moveZ isFirst focusUpZ (focusUpZ >>> oz focusLast)
 sNext = moveZ isLast swapDownZ (\z -> case onFocusedZX (withGroup popz) z of
   (Nothing,rest) -> rest
   (Just w,rest) -> focusDownZ rest & oz (focusFirst >>> insertUpZ w))
@@ -124,3 +126,8 @@ sPrev = moveZ isFirst swapUpZ (\z -> case onFocusedZX (withGroup popz) z of
   (Just w,rest) -> focusUpZ rest & oz (focusLast >>> insertDownZ w))
 
 
+pullout :: [ Window ] -> ModifySpec
+pullout xs l ss = flip fromIndex 1
+  $ G l (fromIndex xs 1)
+  : flip map (fst $ toIndex ss) (
+      onZipper (filterZ (const $ not.(`elem` (S.fromList xs)))))

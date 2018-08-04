@@ -25,6 +25,9 @@ module ContribMod.Decoration
       decoration
     , Theme (..), defaultTheme, def
     , SubTheme (..)
+    , SubThemeClass
+    , mkSubTheme
+    , SubThemeConst (..)
     , Decoration
     , DecorationMsg (..)
     , DecorationStyle (..)
@@ -67,8 +70,9 @@ import qualified XMonad.Util.ExtensibleState as XS
 -- according to the decoration style provided.
 --
 -- For some usage examples see "XMonad.Layout.DecorationMadness".
-decoration :: (DecorationStyle ds a, Shrinker s) => s -> Theme -> ds a
-           -> l a -> ModifiedLayout (Decoration ds s) l a
+decoration :: (DecorationStyle ds a, Shrinker s, SubThemeClass t) => s -> Theme t
+           -> ds a
+           -> l a -> ModifiedLayout (Decoration t ds s) l a
 decoration s t ds = ModifiedLayout (Decoration (I Nothing) s t ds)
 
 -- | A 'Theme' is a record of colors, font etc., to customize a
@@ -82,7 +86,7 @@ data SubTheme = SubTheme { winActiveColor :: String
                          , winInactiveTextColor :: String
                          , winTitleAddons :: [(String, Align)]
                          , winTitleIcons  :: [([[Bool]], Placement)]
-                         } 
+                         } deriving (Read, Show, Typeable)
 
 instance Default SubTheme where
     def = SubTheme { winActiveColor = "#999999"
@@ -95,8 +99,17 @@ instance Default SubTheme where
                    , winTitleIcons = []
                    }
 
+class (Typeable a, Read a, Show a)  => SubThemeClass a where
+  mkSubTheme :: a -> Window -> X (Maybe SubTheme)
+
+data SubThemeConst = SubThemeConst SubTheme deriving (Read, Show)
+instance Default SubThemeConst where def=SubThemeConst def
+
+instance SubThemeClass SubThemeConst where
+  mkSubTheme (SubThemeConst st) _ = return $ Just st
+
 -- For a collection of 'Theme's see "XMonad.Util.Themes"
-data Theme =
+data Theme a =
     Theme { activeColor        :: String                   -- ^ Color of the active window
           , inactiveColor       :: String                   -- ^ Color of the inactive window
           , urgentColor         :: String                   -- ^ Color of the urgent window
@@ -114,11 +127,11 @@ data Theme =
                                                            --    Refer to for a use "XMonad.Layout.ImageButtonDecoration"
           , windowTitleIcons    :: [([[Bool]], Placement)] -- ^ Extra icons to appear in a window's title bar.
                                                            --    Inner @[Bool]@ is a row in a icon bitmap.
-          , subThemeForWindow   :: Window -> X (Maybe SubTheme)
+          , subThemeForWindow   :: a
           } deriving (Show, Read)
 
-
-
+stfw :: (SubThemeClass t) => Theme t -> Window -> X (Maybe SubTheme)
+stfw = mkSubTheme . subThemeForWindow
 
 
 instance Read (Window -> X (Maybe SubTheme)) where
@@ -127,7 +140,7 @@ instance Read (Window -> X (Maybe SubTheme)) where
 instance Show (Window -> X (Maybe SubTheme)) where
     show _ = ""
 
-instance Default Theme where
+instance Default a => Default (Theme a) where
   def =
     Theme { activeColor         = "#999999"
           , inactiveColor       = "#666666"
@@ -144,18 +157,18 @@ instance Default Theme where
           , tabBorderWidth         = 2
           , windowTitleAddons   = []
           , windowTitleIcons    = []
-          , subThemeForWindow   = \w -> return Nothing
+          , subThemeForWindow   = def
           }
 
 {-# DEPRECATED defaultTheme "Use def (from Data.Default, and re-exported by XMonad.Layout.Decoration) instead." #-}
 -- | The default xmonad 'Theme'.
-defaultTheme :: Theme
+defaultTheme :: (SubThemeClass a, Default a) => Theme a
 defaultTheme = def
 
 -- | A 'Decoration' layout modifier will handle 'SetTheme', a message
 -- to dynamically change the decoration 'Theme'.
-newtype DecorationMsg = SetTheme Theme deriving ( Typeable )
-instance Message DecorationMsg
+newtype DecorationMsg t = SetTheme (Theme t) deriving ( Typeable )
+instance SubThemeClass t => Message (DecorationMsg t)
 
 -- | The 'Decoration' state component, where the list of decorated
 -- window's is zipped with a list of decoration. A list of decoration
@@ -175,8 +188,8 @@ type OrigWin = (Window,Rectangle)
 -- together with a layout, to the 'ModifiedLayout' type constructor
 -- to modify the layout by adding decorations according to a
 -- 'DecorationStyle'.
-data Decoration ds s a =
-    Decoration (Invisible Maybe DecorationState) s Theme (ds a) deriving (Show, Read)
+data Decoration t ds s a =
+    Decoration (Invisible Maybe DecorationState) s (Theme t) (ds a) deriving (Show, Read)
 
 -- | The 'DecorationStyle' class, defines methods used in the
 -- implementation of the 'Decoration' 'LayoutModifier' instance. A
@@ -262,7 +275,8 @@ instance Eq a => DecorationStyle DefaultDecoration a
 -- component of the 'Decoration' 'LayoutModifier'. Otherwise we call
 -- 'handleEvent', which will call the appropriate 'DecorationStyle'
 -- methods to perform its tasks.
-instance (DecorationStyle ds Window, Shrinker s) => LayoutModifier (Decoration ds s) Window where
+instance (DecorationStyle ds Window, Shrinker s, SubThemeClass t) =>
+        LayoutModifier (Decoration t ds s) Window where
     redoLayout (Decoration (I (Just s)) sh t ds) _ Nothing _ = do
         releaseResources s
         return ([], Just $ Decoration (I Nothing) sh t ds)
@@ -336,7 +350,7 @@ instance (DecorationStyle ds Window, Shrinker s) => LayoutModifier (Decoration d
 
 -- | By default 'Decoration' handles 'PropertyEvent' and 'ExposeEvent'
 -- only.
-handleEvent :: Shrinker s => s -> Theme -> DecorationState -> Event -> X ()
+handleEvent :: (Shrinker s, SubThemeClass t) => s -> Theme t -> DecorationState -> Event -> X ()
 handleEvent sh t (DS dwrs fs) e
     | PropertyEvent {ev_window = w} <- e
     , Just i <- w `elemIndex`    (map (fst . fst) dwrs) =
@@ -385,7 +399,8 @@ findWindowByDecoration w ds = lookFor w (decos ds)
 
 -- | Initialize the 'DecorationState' by initializing the font
 -- structure and by creating the needed decorations.
-initState :: DecorationStyle ds Window => Theme -> ds Window -> Rectangle
+initState :: (DecorationStyle ds Window, SubThemeClass t)
+          => Theme t -> ds Window -> Rectangle
           -> W.Stack Window -> [(Window,Rectangle)] -> X DecorationState
 initState t ds sc s wrs = do
   fs   <- initXMF (fontName t)
@@ -401,7 +416,7 @@ releaseResources s = do
 -- | Create the decoration windows of a list of windows and their
 -- rectangles, by calling the 'decorate' method of the
 -- 'DecorationStyle' received.
-createDecos :: DecorationStyle ds Window => Theme -> ds Window -> Rectangle -> W.Stack Window
+createDecos :: (DecorationStyle ds Window, SubThemeClass t) => Theme t -> ds Window -> Rectangle -> W.Stack Window
             -> [(Window,Rectangle)] -> [(Window,Rectangle)] -> X [(OrigWin,DecoWin)]
 createDecos t ds sc s wrs ((w,r):xs) = do
   deco <- decorate ds (decoWidth t) (decoHeight t) sc s wrs (w,r)
@@ -413,7 +428,7 @@ createDecos t ds sc s wrs ((w,r):xs) = do
                   return $ ((w,r), (Nothing, Nothing)) : dwrs
 createDecos _ _ _ _ _ [] = return []
 
-createDecoWindow :: Theme -> Rectangle -> X Window
+createDecoWindow :: (SubThemeClass t) => Theme t -> Rectangle -> X Window
 createDecoWindow t r = let mask = Just (exposureMask .|. buttonPressMask) in
                        createNewWindow r mask (inactiveColor t) True
 
@@ -426,18 +441,18 @@ hideDecos = hideWindows . catMaybes . map fst
 deleteDecos :: [DecoWin] -> X ()
 deleteDecos = deleteWindows . catMaybes . map fst
 
-updateDecos :: Shrinker s => Window -> s -> Theme -> XMonadFont -> [(OrigWin,DecoWin)] -> X ()
+updateDecos :: (Shrinker s, SubThemeClass t) => Window -> s -> Theme t -> XMonadFont -> [(OrigWin,DecoWin)] -> X ()
 updateDecos focus s t f = mapM_ $ updateDeco focus s t f
 
 -- | Update a decoration window given a shrinker, a theme, the font
 -- structure and the needed 'Rectangle's
-updateDeco :: Shrinker s =>  Window -> s -> Theme -> XMonadFont -> (OrigWin,DecoWin) -> X ()
+updateDeco :: (Shrinker s, SubThemeClass t) =>  Window -> s -> Theme t -> XMonadFont -> (OrigWin,DecoWin) -> X ()
 updateDeco fw sh t fs ((w,_),(Just dw,Just (Rectangle _ _ wh ht))) = do
   nw  <- getName w
   ur  <- readUrgents
   dpy <- asks display
   -- focus <- gets (W.peek . windowset)
-  mst <- (subThemeForWindow t) w
+  mst <- (stfw t) w
   let focusColor ic ac uc = 
          case (mst) of
             (Just st) | fw == w -> (winActiveColor st, winActiveBorderColor st, winActiveTextColor st)

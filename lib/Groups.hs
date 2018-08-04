@@ -37,3 +37,13 @@ groupQuery groups w = do
       cls <- runQuery className w
       return $ fromMaybe cls (Map.lookup cls $ groupOverrides groups)
     x:_ -> return x
+
+inGroup :: GroupDefinition -> Query Bool
+inGroup gd = do
+  cls <-  className
+  if cls `elem` group gd
+    then return True
+    else do
+      tit <- X.title
+      return $ (title gd) tit
+

@@ -8,7 +8,6 @@
 -- as well. I should really factor out the two components
 module MyPrompts (
     myKeyMap,
-    promptMap,
     fuzzysearch,
     boolfuzzysearch,
     XPConfig(..),
@@ -16,10 +15,8 @@ module MyPrompts (
     myXPConfig,
     mkColor,
     multiPrompt,
-    motion,
-    maybemod,
-    expand,
     PromptList,
+    KeyMap(..),
     WindowPrompt,
     myPrompts
   )
@@ -27,11 +24,12 @@ module MyPrompts (
   
 import Colors
 
-import Data.Char (toLower)
 import Data.Function ((&))
 import Data.List (intercalate, sort, sortOn, nub)
 import Data.Char (isUpper, toLower)
 import Control.Applicative (liftA2)
+import Control.Arrow ((>>>))
+import Control.Monad (replicateM_)
 import qualified Data.Map as M
 import Data.Maybe (catMaybes, isJust)
 import Graphics.X11.Types
@@ -45,32 +43,73 @@ import XMonad.Prompt.Shell
 import XMonad.Prompt.Window
 import XMonad.Util.EZConfig
 
-type PromptList = [([String],String,X ())]
+
+data KeyMap = Action [String] String (X())
+            | Motion [String] String (Int -> X())
+            | Group  [String] String (X()) [KeyMap]
+           -- | Selection [String] String (Int -> X(Window))
+           -- | Action [String] String (X(Window) -> Int -> X(Window))
+type PromptList = [KeyMap]
+
 
 -- allWindows is of type X (Map String Window) - so we can change the name
-myKeyMap key conf promptlist = promptMap $
-        (return key, "", multiPrompt conf promptlist ) : promptlist 
+myKeyMap :: String -> XPConfig -> X() -> [KeyMap] -> XConfig l -> 
+              M.Map (KeyMask,KeySym) (X())
+myKeyMap key xpconf after promptlist xconf = mkmap xconf after promptlist key
+  $ (multiPrompt xpconf promptlist)
+  -- $ Action (return key) "" (multiPrompt xpconf promptlist >> after)
+  -- : promptlist
 
 
-promptMap :: PromptList -> [(String,X ())]
-promptMap ps = concatMap reprompt ps
-  where reprompt (m,_,x) = map (,x) m
+-- | Motion Command - accepts a count
+--   This would be horrifically inefficient if it weren't for laziness
+--   There is still going to be an element of memory leaking here
+--   as this is an infinite data structure
+mkmap :: XConfig l -> X() -> [KeyMap] -> String -> (Int -> X())
+          -> M.Map (KeyMask, KeySym) (X())
+mkmap cf after list promptkey prompt = go 0 ["M-"] list
+  where go n mask xs = M.map (>> after) . mkKeymap cf $
+                  timesN mask n (Motion (return promptkey) "List Options" prompt)
+                  ++ concatMap (timesN mask n) xs ++ do
+                     i <- [0..9]
+                     m <- mask
+                     return ( m ++ show i
+                            , submap $ go (i+10*n) (nub ("":mask)) xs)
+
+        c 0 = 1
+        c n = n
+
+        timesN mask n (Action keys _ action) =
+          allKeys mask keys $ replicateM_ (c n) action
+        timesN mask n (Motion keys _ action) = allKeys mask keys $ action (c n)
+        timesN mask n (Group  keys _ def subkeys) =
+          allKeys mask keys . submapDefault (replicateM_ (c n) def)
+                       $ go n (nub ("":mask)) subkeys
+
+        allKeys mask keys action = map (,action) (maybeMask <$> mask <*> keys)
 
 
+-- | special keys don't need a mask
+maybeMask :: String -> String -> String
+maybeMask m x@('<':_) = x
+maybeMask m x@('M':'-':_) = x
+maybeMask m xs = m ++ case xs of
+  [a] -> if isUpper a then ['S','-',toLower a] else [a]
+  xs' -> xs'
 
-myPrompts :: XPConfig -> XWindowMap -> PromptList  
+myPrompts :: XPConfig -> XWindowMap -> PromptList
 myPrompts conf  windows  = [
-          (["M-w"], "Go to window",
+          Action ["M-w"] "Go to window" (
                       windowPrompt winConf Goto windows),
-          (["M-S-w"], "Bring window to master",
+          Action ["M-S-w"] "Bring window to master" (
                       windowPrompt winConf BringToMaster windows),
-          ([], "Bring window",
+          Action [] "Bring window" (
                       windowPrompt winConf Bring windows),
-          ([], "Bring a copy",
+          Action [] "Bring a copy" (
                       windowPrompt winConf BringCopy windows),
-          (["M-s"], "Run (sh)",
+          Action ["M-s"] "Run (sh)" (
                       shellPrompt shellConf),
-          (["M-S-s"], "Run (term)",
+          Action ["M-S-s"] "Run (term)" (
                       prompt "urxvt -e" termConf)
           ]
   where shellConf = mkColor nohlconf yellow
@@ -83,8 +122,8 @@ myPrompts conf  windows  = [
 fuzzysearch :: Double -> String -> String -> Maybe Double
 fuzzysearch n [] _ = Just 0
 fuzzysearch n (q:qs) (x:xs)
-    | toLower x == toLower q = ((sqrt n)+) <$> fuzzysearch 0 qs xs
-    | otherwise              = fuzzysearch (n+1) (q:qs) (xs)
+    | toLower x == toLower q = (sqrt n +) <$> fuzzysearch 0 qs xs
+    | otherwise              = fuzzysearch (n+1) (q:qs) xs
 fuzzysearch _ _ _ = Nothing
 
 boolfuzzysearch :: String -> String -> Bool
@@ -109,20 +148,31 @@ myXPConfig = def {
 mkColor :: XPConfig -> String -> XPConfig
 mkColor x c = x{borderColor = c, fgHLight = c}
 
-multiPrompt :: XPConfig -> PromptList -> X ()
-multiPrompt conf list =
+
+removeMod ('M':'-':xs) = removeMod xs
+removeMod (x:xs) = x : removeMod xs
+removeMod [] = []
+
+multiPrompt :: XPConfig -> PromptList -> Int -> X ()
+multiPrompt conf list n =
   inputPromptWithCompl newconf "" completions ?+ promptFromTitle
   where
-    promptMap =
-      M.fromList $
-      map
-        (\(key, title, prompt) ->
-           ( title ++
+    promptMap = list
+              & concatMap km
+              & map format
+              & M.fromList
+
+    km (Action key title prompt) = [ (key, title, prompt) ]
+    km (Motion key title prompt ) = [ (key, title ++ "; N ->", prompt n) ]
+    km (Group  key title def xs) = (key, title, multiPrompt conf xs n) : x
+      where x = [ (liftA2 (++) key k, t, p) | (k,t,p) <- concatMap km xs ]
+
+
+    format (key, title, prompt) = ( title ++
              if not (null key)
-               then " (" ++ intercalate ", " (sort key) ++ ")"
+               then " (" ++ removeMod (intercalate ", " (sort key)) ++ ")"
                else ""
-           , prompt))
-        list
+           , prompt)
 
     promptFromTitle t =
       case M.lookup t promptMap of
@@ -144,27 +194,5 @@ multiPrompt conf list =
               (promptKeymap conf)
         }
 
-motion :: XConfig l ->  [([String],String,Int -> X())] -> [([String],String,X())]
-motion cf xs = go 0 ["M-"] xs
-  where go n mask xs = map (\(a,b,c) -> (liftA2 (++) mask a,b,
-                                  c (if n==0 then 1 else n))) xs
-                  ++  [( map (++show i) mask
-                       ,"Prefix "++show i
-                       , submap . (mkKeymap cf) .
-                          concatMap (\(a,_ ,c) -> map (,c) a) $
-                            go (i+10*n) (nub ("":mask)) xs
-                        ) | i <- [0..9] ]
 
-maybemod :: String -> String
-maybemod x@('<':_) = x
-maybemod x@('M':'-':_) = x
-maybemod xs = "M-"++ case xs of
-  [a] -> if isUpper a then ['S','-',toLower a] else [a]
-  xs' -> xs'
 
-expand :: [String] -> [String]
-expand xs = do
-  x <- xs
-  let q:qs = words x
-  qs' <- sequence (map (\x -> nub [maybemod x,x]) qs)
-  return . unwords $ maybemod q : qs'

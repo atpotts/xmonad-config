@@ -1,6 +1,8 @@
 module SystemKeys where
 
 import XMonad
+import MyPrompts
+
 
 systemKeys = volumeKeys ++ brightnessKeys
 
@@ -17,9 +19,9 @@ volume a = amix $ case a of
      amix = spawn . ("amixer -D pulse set Master " ++)
 
 volumeKeys =
- [ (["<XF86AudioLowerVolume>"] , "Vol-"                  , volume Dec)
- , (["<XF86AudioRaiseVolume>"] , "Vol+"                  , volume Inc)
- , (["<XF86AudioMute>"]        , "Mute"                  , volume Toggle)
+ [ Action ["<XF86AudioLowerVolume>"] "Vol-" ( volume Dec)
+ , Action ["<XF86AudioRaiseVolume>"] "Vol+" ( volume Inc)
+ , Action ["<XF86AudioMute>"] "Mute" ( volume Toggle)
  ]
 
 brightness :: ValChange -> X ()
@@ -30,6 +32,6 @@ brightness a = case a of
  where xbacklight = spawn . ("xbacklight -inc "++)
 
 brightnessKeys = 
- [ (["<XF86MonBrightnessUp>"]  , "Screen Brightness Up"  , brightness Inc)
- , (["<XF86MonBrightnessDown>"], "Screen Brightness Down", brightness Dec)
+ [ Action ["<XF86MonBrightnessUp>"] "Screen Brightness Up" ( brightness Inc)
+ , Action ["<XF86MonBrightnessDown>"] "Screen Brightness Down" ( brightness Dec)
  ]

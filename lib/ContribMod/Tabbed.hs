@@ -188,8 +188,13 @@ data DirectionShunt = U Word32 | D Word32 | L Word32 | R Word32
 
 -- -- Create tabbar when required at the given location with the given
 -- -- shrinker and theme to the supplied layout.
-createTabs                ::(Eq a, LayoutClass l a, Shrinker s) => TabbarShown -> DirectionShunt-> s
-                          -> Theme -> l a -> ModifiedLayout (Decoration TabbedDecoration s) l a
+createTabs ::(Eq a, LayoutClass l a, Shrinker s, SubThemeClass t) =>
+            TabbarShown
+            -> DirectionShunt
+            -> s
+            -> Theme t
+            -> l a
+            -> ModifiedLayout (Decoration t TabbedDecoration s) l a
 
 createTabs sh loc tx th l = decoration tx th (Tabbed loc sh) l
 

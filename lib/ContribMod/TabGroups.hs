@@ -58,21 +58,22 @@ import XMonad.Layout.Simplest
 
 
 -- | Configuration data for the "tiled tab groups" layout
-data TiledTabsConfig s = TTC { vNMaster :: Int
+data TiledTabsConfig t s = TTC { vNMaster :: Int
                              , vRatio :: Rational
                              , vIncrement :: Rational
                              , hNMaster :: Int
                              , hRatio :: Rational
                              , hIncrement :: Rational
                              , tabsShrinker :: s
-                             , tabsTheme :: Theme
+                             , tabsTheme :: Theme t
                              , tabSpacing :: Int}
 
-newTabsShrinker :: TiledTabsConfig s -> y -> TiledTabsConfig y
+newTabsShrinker :: SubThemeClass t => TiledTabsConfig t s -> y -> TiledTabsConfig t y
 newTabsShrinker (TTC vn vr vi hn hr hi _ tt ts) sh =
                 TTC vn vr vi hn hr hi sh tt ts
 
-instance s ~ DefaultShrinker => Default (TiledTabsConfig s) where
+instance (s ~ DefaultShrinker, Default t)
+          => Default (TiledTabsConfig t s) where
     def = TTC 1 0.5 (3/100) 1 0.5 (3/100) shrinkText def 0
 
 
