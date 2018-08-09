@@ -22,8 +22,8 @@ import XMonad hiding ((|||))
 import ContribMod.Tabbed
 import ContribMod.Decoration
 
-import qualified XMonad.Layout.Groups as G
-import XMonad.Layout.Groups.Helpers
+import qualified ContribMod.LayoutGroups as G
+import ContribMod.LayoutGroupHelpers
 
 import XMonad.Layout.Spacing (spacing)
 --import XMonad.Layout.TabBarDecoration

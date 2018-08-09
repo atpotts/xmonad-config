@@ -6,7 +6,7 @@ module GroupMotions where
 import XMonad
 import XMonad.Util.Stack
 import XMonad.StackSet (Stack(..))
-import XMonad.Layout.Groups
+import ContribMod.LayoutGroups
 import Control.Monad (replicateM_)
 
 import qualified Data.Set as S
@@ -18,19 +18,63 @@ import Data.List (splitAt)
 -- General Infrastructure--
 ----------------------------
 
+reverseZ :: Zipper a -> Zipper a
+reverseZ Nothing = Nothing
+reverseZ (Just (Stack x lft rgt)) = Just (Stack x rgt lft)
+
+mergeGroupsDown :: ModifySpec
+mergeGroupsDown _ Nothing = Nothing
+mergeGroupsDown _ (Just (Stack f up [])) = Just (Stack f up [])
+mergeGroupsDown _ (Just (Stack f up (d:downs))) =
+  Just (Stack (mrg f d) up downs)
+  where mrg (G ly (Just (Stack x l r)))  (G _ (Just (Stack x' l' r'))) =
+          G ly (Just (Stack x l (r++l'++[x']++r')))
+        mrg a (G _ Nothing) = a
+        mrg (G _ Nothing) a = a
+
+mergeGroupsUp :: ModifySpec
+mergeGroupsUp l = reverseZ . mergeGroupsDown l . reverseZ
+
+moveToNewGroupN :: Int ->  ModifySpec
+moveToNewGroupN n l z =
+  let (w', z') = depop z
+  in case w' of
+      Nothing -> z'
+      Just w'' ->
+        let (ups,downs) = splitAt (n-1) $ fst $ toIndex z'
+        in Just (Stack (G l (Just (Stack w'' [] []))) (reverse ups) downs)
+
 popz :: Zipper a                -> (Maybe a,Zipper a)
 popz Nothing                     = (Nothing,Nothing)
 popz (Just (Stack f [] [] ))     = (Just f,Nothing)
 popz (Just (Stack f (x:xs) [] )) = (Just f,Just $ Stack x xs [])
 popz (Just (Stack f ups (x:xs))) = (Just f, Just $ Stack x ups xs)
 
+depop :: Zipper (Group l a) -> (Maybe a,Zipper (Group l a))
+depop Nothing = (Nothing, Nothing)
+depop (Just (Stack (G l f) ups downs)) =
+  let (w,z) = popz f
+  in (w, Just $ Stack (G l z) ups downs)
+        -- Just _ -> (w, Just $ Stack (G l z) ups downs)
+        -- Nothing -> case downs of
+        --             [] -> case ups of
+        --                     [] -> (w,Nothing)
+        --                     (u:us) -> (w,Just (Stack u us []))
+        --             (d:ds) -> (w, Just(Stack d ups ds))
+
 putz :: Maybe a -> Zipper a             -> Zipper a
 putz Nothing x                           = x
 putz (Just a) Nothing                    = Just $ Stack a [] []
 putz (Just a) (Just (Stack f ups downs)) = Just (Stack a ups (f:downs))
 
+putzd :: Maybe a -> Zipper a             -> Zipper a
+putzd Nothing x                           = x
+putzd (Just a) Nothing                    = Just $ Stack a [] []
+putzd (Just a) (Just (Stack f ups downs)) = Just (Stack a (f:ups) downs)
+
 withGroup :: Functor f => (Zipper a -> f (Zipper a)) -> Group l a -> f (Group l a)
 withGroup f (G l x) = G l <$> f x
+
 
 rotateTo :: Int -> Zipper n -> Zipper n
 rotateTo _ Nothing = Nothing
@@ -118,12 +162,14 @@ oz f = onFocusedZ (onZipper f)
 fNext = oz focusDownZ -- moveZ isLast focusDownZ (focusDownZ >>> oz focusFirst)
 fPrev = oz focusUpZ
 --moveZ isFirst focusUpZ (focusUpZ >>> oz focusLast)
-sNext = moveZ isLast swapDownZ (\z -> case onFocusedZX (withGroup popz) z of
-  (Nothing,rest) -> rest
-  (Just w,rest) -> focusDownZ rest & oz (focusFirst >>> insertUpZ w))
-sPrev = moveZ isFirst swapUpZ (\z -> case onFocusedZX (withGroup popz) z of
-  (Nothing,rest) -> rest
-  (Just w,rest) -> focusUpZ rest & oz (focusLast >>> insertDownZ w))
+sNext = oz swapDownZ
+  -- moveZ isLast swapDownZ (\z -> case onFocusedZX (withGroup popz) z of
+  -- (Nothing,rest) -> rest
+  -- (Just w,rest) -> focusDownZ rest & oz (focusFirst >>> insertUpZ w))
+sPrev = oz swapUpZ
+  -- moveZ isFirst swapUpZ (\z -> case onFocusedZX (withGroup popz) z of
+  -- (Nothing,rest) -> rest
+  -- (Just w,rest) -> focusUpZ rest & oz (focusLast >>> insertDownZ w))
 
 
 pullout :: [ Window ] -> ModifySpec

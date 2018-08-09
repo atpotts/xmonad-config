@@ -55,8 +55,8 @@ type PromptList = [KeyMap]
 -- allWindows is of type X (Map String Window) - so we can change the name
 myKeyMap :: String -> XPConfig -> X() -> [KeyMap] -> XConfig l -> 
               M.Map (KeyMask,KeySym) (X())
-myKeyMap key xpconf after promptlist xconf = mkmap xconf after promptlist key
-  $ (multiPrompt xpconf promptlist)
+myKeyMap key xpconf after promptlist xconf =
+  mkmap xconf after promptlist key (multiPrompt xpconf promptlist)
   -- $ Action (return key) "" (multiPrompt xpconf promptlist >> after)
   -- : promptlist
 
@@ -67,7 +67,7 @@ myKeyMap key xpconf after promptlist xconf = mkmap xconf after promptlist key
 --   as this is an infinite data structure
 mkmap :: XConfig l -> X() -> [KeyMap] -> String -> (Int -> X())
           -> M.Map (KeyMask, KeySym) (X())
-mkmap cf after list promptkey prompt = go 0 ["M-"] list
+mkmap cf after list promptkey prompt =  go 0 ["M-"] list
   where go n mask xs = M.map (>> after) . mkKeymap cf $
                   timesN mask n (Motion (return promptkey) "List Options" prompt)
                   ++ concatMap (timesN mask n) xs ++ do

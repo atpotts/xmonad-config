@@ -123,12 +123,12 @@ instance Direction History where
         )
       AllHistory -> markHistory Left >> go' id
       BackwardsWhen q -> do
-        markHistory Left
-        go $ \x -> do
-          (lft,rgt) <- flip seqPartitionM x $ \w -> do
-                  b <- runQuery q $ unmark w
-                  return (isRight w && b)
-          return $ lft >< Seq.reverse rgt
+          domark <- (withWindowSet $ traverse (runQuery q) . SS.peek)
+          markHistory (if maybe True id domark then Left else Right) >> go'
+            ( uncurry (><)
+            . second (Seq.reverse)
+            . Seq.partition isRight
+            )
     where go' f = go (return.f)
           go f  = do
             (HistoryDB w ws)  <- XS.get

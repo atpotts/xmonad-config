@@ -3,7 +3,7 @@ base03, base02, base01, base00,
   base0, base1, base2, base3,
   yellow, orange, red, magenta,
   violet, blue, cyan, green, inherit,
-  myFont, accentcolors, addcolor,scale) where
+  myFont, myBodyFont, accentcolors, addcolor,scale) where
 
 import Data.Hashable (hashWithSalt)
 import qualified Data.Map as M

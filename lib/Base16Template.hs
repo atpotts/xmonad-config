@@ -18,7 +18,8 @@ green   ="#{{base0B}}"
 inherit = ""
 myFont :: String
 -- myFont = "xft:Meslo LG L DZ:size=10"
-myFont = "xft:{{headerfontname}}:size={{headersize}}"
+myFont = "xft:{{headerfontname}}:size=" ++ show ({{headersize}}-2)
+myBodyFont = "xft:{{headerfontname}}:size={{bodysize}}"
 -- myFont = "xft:Liberation Sans:size=10"
 -- myFont = "xft:TeX Gyre Adventor:size=10"
 -- myFont = "xft:Cabin Regular:size=10"

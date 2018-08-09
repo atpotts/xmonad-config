@@ -32,8 +32,8 @@ projectHooks = PHT $ Map.fromList [ ("xmonad", spawn "urxvt -c kak xmonad.hs")]
 
 projectPrompts :: XPConfig -> PromptList 
 projectPrompts conf = [
-    Action ["p"] "Go to project" (switchProjectPrompt conf),  
-    Action ["P"] "Send to project" (shiftToProjectPrompt conf),
+    Action ["y"] "Go to project" (switchProjectPrompt conf),  
+    Action ["Y"] "Send to project" (shiftToProjectPrompt conf),
     Action ["x"] "Rename project" (renameProjectPrompt conf),  
     Action ["X"] "Change project directory" (changeProjectDirPrompt conf),
     Action ["g"] "New Project from Directory" (newDir conf

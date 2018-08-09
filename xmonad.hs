@@ -1,8 +1,10 @@
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE TupleSections     #-}
-{-# LANGUAGE RankNTypes        #-}
-{-# LANGUAGE FlexibleContexts  #-}
-{-# LANGUAGE TypeApplications  #-}
+{-# LANGUAGE OverloadedStrings     #-}
+{-# LANGUAGE TupleSections         #-}
+{-# LANGUAGE RankNTypes            #-}
+{-# LANGUAGE FlexibleContexts      #-}
+{-# LANGUAGE TypeApplications      #-}
+{-# LANGUAGE FlexibleInstances     #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 
 -- My Personal Customizations
 import           Colors
@@ -46,12 +48,12 @@ import           XMonad.Hooks.Place
 
 import qualified XMonad.Layout.BoringWindows as B
 import           XMonad.Layout.Minimize
-import           XMonad.Layout.Groups (GroupsMessage(..))
+import           ContribMod.LayoutGroups (GroupsMessage(..))
 import           XMonad.Layout.MultiToggle
 import           XMonad.Layout.MultiToggle.Instances
 import           XMonad.Layout.Spacing (spacing)
-import qualified XMonad.Layout.Groups as Gr
-import qualified XMonad.Layout.Groups.Helpers as G
+import qualified ContribMod.LayoutGroups as Gr
+import qualified ContribMod.LayoutGroupHelpers as G
 import           XMonad.Layout.TwoPane
 
 import           XMonad.Util.EZConfig (mkKeymap)
@@ -83,11 +85,11 @@ backgroundColor = base2
 inactiveborder  = base3
 termcmd         = "urxvt"
 myTerminal        = termcmd /./ "-e zsh"
-launchinterm    = ("urxvt -e "++)
+launchinterm x   = (("urxvt --name "++x++" -e ")++)
 border :: Integral a => a
 border          = scale 2
 
-WindowManage = WM {
+data WindowManage = WM {
   onSame :: X(),
   onOther :: X()
 }
@@ -95,35 +97,46 @@ instance Default WindowManage where def = let r = return () in WM r r
 
 groups :: [GroupDefinition]
 groups =
-  [ GD "Shell"    ["t"] myTerminal base00 (isPrefixOf "zsh:") []
-  , GD "Terminal" ["T"] myTerminal blue   (const False) ["URxvt", "Termite"]
-  , GD 
-      "Editor"
-      ["e"]
-      (launchinterm "kak")
-      green
-      (\x -> "Kakoune" `isSuffixOf` x || "VIM" `isSuffixOf` x)
-      ["Emacs"]
-  , GD
-      "Browser"
-      ["b"]
-      "qutebrowser"
-      yellow
-      (const False)
-      ["qutebrowser", "Firefox", "Chromium"]
+  [ def { Grp.name="Shell"
+        , Grp.keys=["t"]
+        , Grp.spawn=myTerminal
+        , Grp.colour=base00
+        , Grp.title=(isPrefixOf "zsh:")
+        , Grp.manageHook=Gr.moveToNewGroupDown
+        }
+  , def { Grp.name="Terminal"
+        , Grp.keys=["T"]
+        , Grp.spawn=myTerminal
+        , Grp.colour=blue
+        , Grp.group=["URxvt", "Termite"]
+        , Grp.manageHook=Gr.moveToNewGroupDown
+        }
+  , def { Grp.name="Editor"
+        , Grp.keys=["e"]
+        , Grp.spawn=(launchinterm "Kakoune" "kak")
+        , Grp.colour=green
+        , Grp.title=(\x -> "Kakoune" `isSuffixOf` x || "VIM" `isSuffixOf` x
+                          || ("**" `isPrefixOf` x && "EDITOR" `isInfixOf` x))
+        , Grp.group=["Emacs", "Kakoune"]
+        }
+  , def
+        { Grp.name = "Browser"
+        , Grp.keys=["b"]
+        , Grp.spawn="qutebrowser"
+        , Grp.colour=yellow
+        , Grp.title=(const False)
+        , Grp.group=["qutebrowser", "Firefox", "Chromium"]
+        }
   ]
 
-
-
-titleOverrides = Grp.titleOverrides groups
-groupOverrides = Grp.groupOverrides groups
+titleOverrides = Grp.titleOverrides Grp.name groups
+groupOverrides = Grp.groupOverrides Grp.name groups
 groupQuery = Grp.groupQuery groups
 
 accentmap :: Map.Map String String
 accentmap =
   Map.fromList $
     ("scratch", magenta) : map (Grp.name &&& Grp.colour) groups
-
 
 myTheme :: Theme MyTheme
 myTheme = def {
@@ -137,7 +150,7 @@ myTheme = def {
          activeTextColor     = winActiveTextColor defST,
          inactiveTextColor   = winInactiveTextColor defST,
          fontName            = myFont,
-         decoHeight          = scale 30,
+         decoHeight          = scale 24,
          tabBorderWidth      = border
 }
 
@@ -191,16 +204,33 @@ setbg fg bg =
   "-solid" /=/
   bg
                    -- /./ "-bg" /=/ bg
+                   --
+                   --
+
+-- | This is a horrifc abuse of typeclasses to enable
+-- the group-level managehooks to be specified late by implicityl
+-- threading around information.
+--
+-- On the other hand, it seems to work quite nicely
+--
+-- TODO : Refactor this out into something cleaner (probably an additional type)
+--  parameter
+instance Gr.GroupHook (Gr.Groups a b c) a where
+      mHook _ = Grp.groupQuery' Grp.manageHook groups
+
 managementHooks :: [ManageHook]
 managementHooks =
-  (resource =? "stalonetray" --> doIgnore) :
-  map
+  [ resource =? "stalonetray" --> doIgnore
+      --liftX G.moveToNewGroupDown
+      --liftX (
+      --sendMessage Gr.Refocus >> G.moveToNewGroupDown) >> idHook
+  ]
+  ++ map
     (placeHook (fixed (0.5, 0.5)) <+>)
     [ className =? "Xmessage"  --> doFloat
     , resource  =? "Dialog"    --> doFloat
     , title     =? "**popup**" --> doFloat
     ]
-
 
 main = do
       xmproc <- runXmobar
@@ -215,8 +245,8 @@ main = do
               logHook    = xmobarHook xmproc <+> historyHook,
               startupHook = do
                   startupHook defaultConfig
-                  setbg magenta backgroundColor
-                  retheme,
+                  setbg magenta backgroundColor,
+                  -- retheme,
 
               -- use Mod key
               modMask = cmdkey,
@@ -260,9 +290,7 @@ myKeys conf =
    , Action ["C-i"] "Back" $ nextMatch ForwardsHistory (return True)
    , Action ["<XF86MonBrightnessUp>", "<F2>"] "Screen Brightness Up" (spawn "xbacklight -inc +10")
    , Action ["<XF86MonBrightnessDown>", "<F1>"] "Screen Brightness Down" (spawn "xbacklight -inc -10")
-   , Action ["E"] "Swap with master group" (G.swapGroupMaster)
-   , Action ["J", "M-S-<D>"] "Swap window next" (G.swapGroupUp)
-   , Action ["K", "M-S-<U>"] "Swap window previous" (G.swapGroupDown)
+
       -- resizing the master/slave ratio
    , Action ["S-=", "M-="] "Expand master" (expandMasterGroups)
    , Action ["-"] "Shrink master" (shrinkMasterGroups)
@@ -280,7 +308,8 @@ myKeys conf =
    , Action ["S-,", "M-<"] "Cycle within app" cycleapp
     ]
     -- reapplying themes is necessary when switching workspace
-    ++ (map (\(a,b,c) -> Action a b (c >> retheme))
+    --   was c >> retheme - should no longer be necsessary
+    ++ (map (\(a,b,c) -> Action a b c)
        [ ( ["C-<L>", "C-h"]
          , "Send to previous project"
          , DO.shiftTo Prev HiddenNonEmptyWS)
@@ -299,46 +328,61 @@ myKeys conf =
          , DO.swapWith Next HiddenNonEmptyWS)
        ])
      ++ systemKeys
-     ++ 
+     ++
+
+      -- jk/JK - focus up & focus down
+      -- *->
+      -- move into down/up
+      -- move down/up to new
+      -- move to master
+      -- swap to master
+      -- move focus to n
+      -- focus down/up
+
        -- Launch groups
        [ Group ["a"] "Launch Group" cycleapp (
             Action   ["a"] "Cycle" cycleapp
             : flip map groups (\x ->
                 Action (Grp.keys x) (Grp.name x) $
-                     nextMatchOrDo BackwardsHistory
+                     nextMatchOrDo (BackwardsWhen (Grp.inGroup x))
                         (liftA2 (&&) inWorkSpace (Grp.inGroup x))
                         (spawn $ Grp.spawn x))
             ++ flip map groups (\x ->
                 Action (map (map toUpper) $ Grp.keys x) ("Spawn "++ Grp.name x)
                     (spawn $ Grp.spawn x)))
-        , Motion ["f"] "Swap with window N" (\n -> modgroups (rotateInGroup n))
-        , Motion ["S-r"] "Move to Group N" (\n -> modgroups (moveToGroup n))
-        , Motion ["f"] "Focus to Group N" (\n -> modgroups (focusInGroup n))
-        , Motion ["c"] "Move Group to N" (\n -> modgroups (rotateTo n))
-        , Motion ["S-c"] "Move to new group N" (\n -> do
-                                  modgroups (moveToGroup n)
-                                  G.moveToNewGroupUp
-                                  sendMessage Gr.Refocus )
-        , Motion ["S-f"] "Focus to Group N" (\n -> modgroups (focusN n))
 
         , Action ["b"] "Breakout Group" (do
             pullToMaster (ask >>= liftX . groupQuery))
 
+        , Action ["B"] "Breakup / Split Group" (do
+            sendMessage $ Modify Gr.splitGroup)
+
         -- Relative Motions - internal
-        , Motion ["M-<Tab>"] "Focus Next" (modgroupsn fNext)
-        , Motion ["M-S-<Tab>"] "Focus Prev" (modgroupsn fPrev)
-        , Motion ["\\"] "Swap Next" (modgroupsn sNext)
-        , Motion ["S-\\"] "Swap Prev" (modgroupsn sPrev)
+        , Motion ["f"] "Swap with window N" (\n -> modgroups (rotateInGroup n))
+        , Motion ["S-r"] "Move to Group N" (\n -> modgroups (moveToGroup n))
+        --- F doesn't do anything
+        , Motion ["F"] "Focus to Group N" (\n -> modgroups (focusInGroup n))
+        , Motion ["S-c"] "Move Group to N" (\n -> modgroups (rotateTo n))
+        , Motion ["c"] "Move to new group N" (\n ->
+            sendMessage (Modify $ moveToNewGroupN n) >>
+            sendMessage Gr.Refocus)
+                                  -- modgroups (moveToGroup n)
+                                  -- G.moveToNewGroupUp
+                                  -- sendMessage Gr.Refocus )
+        , Motion ["M-<Tab>","n"] "Focus Next" (modgroupsn fNext)
+        , Motion ["M-S-<Tab>","p"] "Focus Prev" (modgroupsn fPrev)
+        , Motion ["\\","N"] "Swap Next" (modgroupsn sNext)
+        , Motion ["S-\\","P"] "Swap Prev" (modgroupsn sPrev)
 
         -- Relative Motions -- groups
         , Motion ["S-["] "Create Group Above" (
             modgroupsXn1 (G.moveToGroupUp True) $ do
-              G.moveToNewGroupUp
-              retheme)
+              G.moveToNewGroupUp)
+              -- retheme)
         , Motion ["S-]"] "Create Group Below" (
             modgroupsXn1 (G.moveToGroupDown True) $ do
-              G.moveToNewGroupDown
-              retheme)
+              G.moveToNewGroupDown)
+              -- retheme)
         , Motion ["["] "Move to Group Above" (
             modgroupsXn $ G.moveToGroupUp True)
         , Motion ["]"] "Move to Group Below" (
@@ -347,7 +391,18 @@ myKeys conf =
             modgroupsXn G.focusGroupDown)
         , Motion ["k", "M-<U>"] "Previous window" (
             modgroupsXn G.focusGroupUp)
-      ]
+        , Motion ["J", "M-S-<D>"] "Swap window next" (
+            modgroupsXn G.swapGroupUp)
+        , Motion ["K", "M-S-<U>"] "Swap window previous" (
+            modgroupsXn G.swapGroupDown)
+        , Motion [")"] "Merge groups down" (
+            modgroupsXn (sendMessage $ Modify mergeGroupsDown))
+        , Motion ["(","S-9"] "Merge groups up" (
+            modgroupsXn (sendMessage $ Modify mergeGroupsUp))
+    ]
+
+withWindewSet . modify'
+
 
 cycleapp = nextMatchWithThis BackwardsHistory $
   do a <- inWorkSpace
@@ -370,7 +425,7 @@ pullToMaster q = (withWindowSet $ traverse x . W.peek) >> return ()
           if null ws' then return () else do
                     sendMessage (Modify $ pullout ws')
                     sendMessage Refocus
-                    retheme
+                    -- retheme
 
 
 myFocus :: Window -> X ()
