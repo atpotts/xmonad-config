@@ -1,8 +1,6 @@
 {-# LANGUAGE OverloadedStrings     #-}
-{-# LANGUAGE TupleSections         #-}
 {-# LANGUAGE RankNTypes            #-}
 {-# LANGUAGE FlexibleContexts      #-}
-{-# LANGUAGE TypeApplications      #-}
 {-# LANGUAGE FlexibleInstances     #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 
@@ -17,11 +15,9 @@ import           ContribMod.Decoration
   , DefaultShrinker
   , mkSubTheme
   )
-
 import           ContribMod.TabGroups
 import           ContribMod.Tabbed
 import           ContribMod.GroupNavigation
-import qualified DynamicProjects as DP
 import           MyPrompts
 import           Projects
 import           Shrinker
@@ -77,15 +73,15 @@ import           Data.List (break, isInfixOf, isPrefixOf, isSuffixOf,nub,
                             stripPrefix, unfoldr)
 import qualified Data.Map as Map
 
-import           System.Exit (ExitCode(ExitSuccess), exitWith)
+import           System.Exit (ExitCode(ExitSuccess), exitWith, exitSuccess)
 import           System.IO
 
 activeborder    = base01
 backgroundColor = base2
-inactiveborder  = base3
+inactiveborder  = base2
 termcmd         = "urxvt"
-myTerminal        = termcmd /./ "-e zsh"
-launchinterm x   = (("urxvt --name "++x++" -e ")++)
+myTerminal      = termcmd /./ "-e zsh"
+launchinterm x  = (("urxvt --name "++x++" -e ")++)
 border :: Integral a => a
 border          = scale 2
 
@@ -95,9 +91,10 @@ data WindowManage = WM {
 }
 instance Default WindowManage where def = let r = return () in WM r r
 
+
 groups :: [GroupDefinition]
-groups =
-  [ def { Grp.name="Shell"
+groups = [
+    def { Grp.name="Shell"
         , Grp.keys=["t"]
         , Grp.spawn=myTerminal
         , Grp.colour=base00
@@ -113,10 +110,10 @@ groups =
         }
   , def { Grp.name="Editor"
         , Grp.keys=["e"]
-        , Grp.spawn=(launchinterm "Kakoune" "kak")
+        , Grp.spawn=launchinterm "Kakoune" "kak"
         , Grp.colour=green
-        , Grp.title=(\x -> "Kakoune" `isSuffixOf` x || "VIM" `isSuffixOf` x
-                          || ("**" `isPrefixOf` x && "EDITOR" `isInfixOf` x))
+        , Grp.title= \x -> "Kakoune" `isSuffixOf` x || "VIM" `isSuffixOf` x
+                          || ("**" `isPrefixOf` x && "EDITOR" `isInfixOf` x)
         , Grp.group=["Emacs", "Kakoune"]
         }
   , def
@@ -124,7 +121,7 @@ groups =
         , Grp.keys=["b"]
         , Grp.spawn="qutebrowser"
         , Grp.colour=yellow
-        , Grp.title=(const False)
+        , Grp.title=const False
         , Grp.group=["qutebrowser", "Firefox", "Chromium"]
         }
   ]
@@ -159,6 +156,7 @@ instance Default MyTheme where def = MyTheme
 instance SubThemeClass MyTheme where
   mkSubTheme MyTheme = themeWindow border defST
 
+
 box b n x y =
   let vborder = replicate b True
       hborder = replicate b (replicate (n + 2 * b) True)
@@ -169,6 +167,7 @@ ttc :: TiledTabsConfig MyTheme DefaultShrinker
 ttc =  (def::TiledTabsConfig MyTheme DefaultShrinker) { tabsTheme = myTheme, tabSpacing = 10 }
 
 myLayout =
+  workspaceDir "~" $
   minimize $
   tallTabs 0 $ ttc
       `newTabsShrinker` MyShrinker "/"
@@ -215,6 +214,8 @@ setbg fg bg =
 --
 -- TODO : Refactor this out into something cleaner (probably an additional type)
 --  parameter
+
+
 instance Gr.GroupHook (Gr.Groups a b c) a where
       mHook _ = Grp.groupQuery' Grp.manageHook groups
 
@@ -229,22 +230,22 @@ managementHooks =
     (placeHook (fixed (0.5, 0.5)) <+>)
     [ className =? "Xmessage"  --> doFloat
     , resource  =? "Dialog"    --> doFloat
-    , title     =? "**popup**" --> doFloat
+    , title     =? "<<popup>>" --> doFloat
     ]
 
 main = do
       xmproc <- runXmobar
       spawn $ home ".fehbg"
-      xmonad $ dynamicProjects projects projectHooks
+      xmonad -- $ dynamicProjects projects projectHooks
              $ ewmh
              $ docks def {
               terminal   = myTerminal,
-              manageHook = manageDocks <+> manageHook defaultConfig
+              manageHook = manageDocks <+> manageHook def
                                        <+> composeAll managementHooks,
               layoutHook = B.boringWindows $ avoidStruts myLayout,
               logHook    = xmobarHook xmproc <+> historyHook,
               startupHook = do
-                  startupHook defaultConfig
+                  startupHook def
                   setbg magenta backgroundColor,
                   -- retheme,
 
@@ -259,12 +260,14 @@ main = do
                       ) c,
               borderWidth = border,
               normalBorderColor = inactiveborder,
-              focusedBorderColor = inactiveborder
+              focusedBorderColor = inactiveborder,
+              handleEventHook = chdirEventHook
           }
 
 myKeys :: XConfig Layout -> PromptList
 myKeys conf =
    [ Action ["e"] "Switch to Workspace 0" $ do
+
       w <- screenWorkspace 0
       whenJust w (windows . W.view)
    , Action ["u"] "switch to workspace 1" $ do
@@ -278,30 +281,35 @@ myKeys conf =
       whenJust w (windows . W.shift)
    , Action ["S-<Return>"] "Launch terminal" (spawn $ XMonad.terminal conf)
    , Action ["d"] "Close window" (kill >> sendMessage Gr.Refocus)
-   , Action ["M-<Return>"] "Next layout" (nextOuterLayout)
+   , Action ["M-<Return>"] "Next layout" nextOuterLayout
       --media keys
-   , Action ["<XF86AudioLowerVolume>", "<F11>"] "Vol-" ( spawn "amixer set Master 4000-")
-   , Action ["<XF86AudioRaiseVolume>", "<F12>"] "Vol+" ( spawn "amixer set Master 4000+")
-   , Action ["<XF86AudioMute>", "<F10>"] "Mute" (spawn "amixer set Master toggle")
+   , Action ["<XF86AudioLowerVolume>"] "Vol-" ( spawn "amixer set Master 4000-")
+   , Action ["<XF86AudioRaiseVolume>"] "Vol+" ( spawn "amixer set Master 4000+")
+   , Action ["<XF86AudioMute>"] "Mute" (spawn "amixer set Master toggle")
    , Action ["'"] "Go To Mark" (tomarks conf)
    , Action ["m"] "Mark" (makemarks conf)
-   , Action ["o"] "Open File" (spawn "stouter")
+   , Group  ["o","O"] "Launchers" (return ())
+     [ Action ["o"] "Open File" (spawn "stouter")
+     , Action ["O"] "Open File" (spawn "cd ~; stouter")
+     , Action ["m"] "Open Manpage" (spawn "lsman-show")
+     , Action ["p"] "Open Program" (spawn "pathlist-show")
+     ]
    , Action ["C-o"] "Back" $ nextMatch BackwardsHistory (return True)
    , Action ["C-i"] "Back" $ nextMatch ForwardsHistory (return True)
-   , Action ["<XF86MonBrightnessUp>", "<F2>"] "Screen Brightness Up" (spawn "xbacklight -inc +10")
-   , Action ["<XF86MonBrightnessDown>", "<F1>"] "Screen Brightness Down" (spawn "xbacklight -inc -10")
+   , Action ["<XF86MonBrightnessUp>","`", "S-~"] "Screen Brightness Up" (spawn "xbacklight -inc +10")
+   , Action ["<XF86MonBrightnessDown>", "S-`", "~"] "Screen Brightness Down" (spawn "xbacklight -inc -10")
 
       -- resizing the master/slave ratio
-   , Action ["S-=", "M-="] "Expand master" (expandMasterGroups)
-   , Action ["-"] "Shrink master" (shrinkMasterGroups)
+   , Action ["S-=", "M-="] "Expand master"  expandMasterGroups
+   , Action ["-"] "Shrink master" shrinkMasterGroups
       -- floating layer support
    , Action ["t"] "Sink" (withFocused $ windows . W.sink)
-   , Action ["T"] "Sink all" (sinkAll)
+   , Action ["T"] "Sink all" sinkAll
       -- increase or decrease number of windows in the master area
-   , Action [","] "Increment master" (increaseNMasterGroups)
-   , Action ["."] "Decrement master" (decreaseNMasterGroups)
+   , Action [","] "Increment master" increaseNMasterGroups
+   , Action ["."] "Decrement master" decreaseNMasterGroups
       -- quit, or restart
-   , Action ["S-<Backspace>"] "Quit xmonad" (io (exitWith ExitSuccess))
+   , Action ["S-<Backspace>"] "Quit xmonad" (io exitSuccess)
    , Action ["q"] "Restart xmonad" (spawn $
         "if type xmonad;" /./ "then xmonad --recompile && xmonad --restart;" /./
         "else xmessage xmonad not in \\$PATH: \"$PATH\"; fi")
@@ -309,7 +317,8 @@ myKeys conf =
     ]
     -- reapplying themes is necessary when switching workspace
     --   was c >> retheme - should no longer be necsessary
-    ++ (map (\(a,b,c) -> Action a b c)
+    ++ (
+      map (\(a,b,c) -> Action a b c)
        [ ( ["C-<L>", "C-h"]
          , "Send to previous project"
          , DO.shiftTo Prev HiddenNonEmptyWS)
@@ -395,13 +404,12 @@ myKeys conf =
             modgroupsXn G.swapGroupUp)
         , Motion ["K", "M-S-<U>"] "Swap window previous" (
             modgroupsXn G.swapGroupDown)
-        , Motion [")"] "Merge groups down" (
+        , Motion [")","S-0"] "Merge groups down" (
             modgroupsXn (sendMessage $ Modify mergeGroupsDown))
         , Motion ["(","S-9"] "Merge groups up" (
             modgroupsXn (sendMessage $ Modify mergeGroupsUp))
     ]
 
-withWindewSet . modify'
 
 
 cycleapp = nextMatchWithThis BackwardsHistory $
@@ -413,7 +421,7 @@ inWorkSpace :: Query Bool
 inWorkSpace = do
   w <- ask
   ws <- liftX $ gets windowset
-  return $ w `elem` (windowList ws)
+  return $ w `elem` windowList ws
 
 pullToMaster :: Eq a => Query a -> X()
 pullToMaster q = (withWindowSet $ traverse x . W.peek) >> return ()
@@ -519,7 +527,8 @@ themeWindow bw st w = do
           Nothing -> []
           Just a -> [("[" ++ [a] ++ "]", AlignRightOffset (scale 5))]
   isfocus <- (Just w ==) . W.peek <$> gets windowset
-  when isfocus (setWindowBorder' color w)
+  setWindowBorder' (if isfocus then color else winInactiveBorderColor st) w
+
   return . Just $
     st
       { winInactiveColor     = color

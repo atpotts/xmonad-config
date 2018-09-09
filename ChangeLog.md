@@ -1,4 +1,4 @@
-# Revision history for xmonad-config-lib
+# Revision history for my-xmonad-config
 
 ## 0.1.0.0  -- YYYY-mm-dd
 

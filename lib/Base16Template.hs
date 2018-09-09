@@ -23,4 +23,4 @@ myBodyFont = "xft:{{headerfontname}}:size={{bodysize}}"
 -- myFont = "xft:Liberation Sans:size=10"
 -- myFont = "xft:TeX Gyre Adventor:size=10"
 -- myFont = "xft:Cabin Regular:size=10"
-size={{headersize}}::Float
+size={{headersize}}+3::Float

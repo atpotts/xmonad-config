@@ -19,6 +19,7 @@ inherit = ""
 myFont :: String
 -- myFont = "xft:Meslo LG L DZ:size=10"
 myFont = "xft:Inconsolata LGC for Powerline:size=8"
+myBodyFont = "xft:Inconsolata LGC for Powerline:size=8"
 -- myFont = "xft:Liberation Sans:size=10"
 -- myFont = "xft:TeX Gyre Adventor:size=10"
 -- myFont = "xft:Cabin Regular:size=10"

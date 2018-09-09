@@ -21,7 +21,7 @@ module MyPrompts (
     myPrompts
   )
   where
-  
+
 import Colors
 
 import Data.Function ((&))
@@ -99,12 +99,12 @@ maybeMask m xs = m ++ case xs of
 
 myPrompts :: XPConfig -> XWindowMap -> PromptList
 myPrompts conf  windows  = [
-          Action ["M-w"] "Go to window" (
-                      windowPrompt winConf Goto windows),
-          Action ["M-S-w"] "Bring window to master" (
-                      windowPrompt winConf BringToMaster windows),
-          Action [] "Bring window" (
-                      windowPrompt winConf Bring windows),
+          Action ["w"] "Go to window" (
+                      spawn "mywmctrl -a"),
+                      -- windowPrompt winConf Goto windows),
+          Action ["S-w"] "Bring window to master" (
+                      -- windowPrompt winConf BringToMaster windows),
+                      spawn "mywmctrl -R"),
           Action [] "Bring a copy" (
                       windowPrompt winConf BringCopy windows),
           Action ["M-s"] "Run (sh)" (

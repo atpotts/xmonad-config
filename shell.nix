@@ -4,6 +4,7 @@ stdenv.mkDerivation {
   name = "xmonad-config";
   buildInputs = [
    nix
+   hie.hie82
    (haskellPackages.ghcWithPackages
         (haskellPackages: with haskellPackages;
         [

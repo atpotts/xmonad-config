@@ -84,7 +84,7 @@ tallTabs n c = tiledTabs n c $  _vert c ||| _horiz c ||| Full
 {-tiledTabs (TTC s t) l = G.group (tabBar s t Top Simplest) l-}
 tiledTabs n c = G.group (_tab n c _tabs)
 _tab n (TTC{tabsShrinker=s,tabsTheme=t}) =
-  renamed [CutWordsLeft 1] . createTabs Always (U n) s t
+  renamed [CutWordsLeft 1] . createTabs WhenPlural (U n) s t
 -- _tab (TTC{tabsShrinker=s,tabsTheme=t}) =
 --      renamed [CutWordsLeft 1] . tabBar s t Top
 _tabs = named "Tabs" Simplest

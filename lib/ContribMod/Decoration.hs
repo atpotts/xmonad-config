@@ -476,8 +476,8 @@ updateDeco fw sh t fs ((w,_),(Just dw,Just (Rectangle _ _ wh ht))) = do
       icons = map fst aicons
   paintTextAndIcons dw fs wh ht (tabBorderWidth t) bc borderc tc bc als strs i_als icons
   
-updateDeco _ _ _ _ (_,(Just w,Nothing)) = hideWindow w
-updateDeco _ _ _ _ _ = return  ()
+updateDeco _ _ t _ ((w',_),(Just w,Nothing)) = stfw t w' >> hideWindow w
+updateDeco _ _ t _ ((w,_),_) = stfw t w >> return  ()
 
 -- | True if the window is in the 'Stack'. The 'Window' comes second
 -- to facilitate list processing, even though @w \`isInStack\` s@ won't
