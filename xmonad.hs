@@ -71,6 +71,7 @@ import           Data.Maybe (catMaybes, fromMaybe)
 import           Data.Monoid ((<>))
 import           Data.List (break, isInfixOf, isPrefixOf, isSuffixOf,nub,
                             stripPrefix, unfoldr)
+import qualified Data.Set as Set
 import qualified Data.Map as Map
 
 import           System.Exit (ExitCode(ExitSuccess), exitWith, exitSuccess)
@@ -97,9 +98,10 @@ groups = [
     def { Grp.name="Shell"
         , Grp.keys=["t"]
         , Grp.spawn=myTerminal
-        , Grp.colour=base00
+        , Grp.colour=base1
         , Grp.title=(isPrefixOf "zsh:")
         , Grp.manageHook=Gr.moveToNewGroupDown
+        , Grp.flipCols=True
         }
   , def { Grp.name="Terminal"
         , Grp.keys=["T"]
@@ -107,6 +109,12 @@ groups = [
         , Grp.colour=blue
         , Grp.group=["URxvt", "Termite"]
         , Grp.manageHook=Gr.moveToNewGroupDown
+        , Grp.flipCols=True
+        }
+  , def { Grp.name="Terminal Keep"
+        , Grp.colour=base1
+        , Grp.title=(=="<<keep>>")
+        , Grp.flipCols=True
         }
   , def { Grp.name="Editor"
         , Grp.keys=["e"]
@@ -115,6 +123,7 @@ groups = [
         , Grp.title= \x -> "Kakoune" `isSuffixOf` x || "VIM" `isSuffixOf` x
                           || ("**" `isPrefixOf` x && "EDITOR" `isInfixOf` x)
         , Grp.group=["Emacs", "Kakoune"]
+        , Grp.flipCols=True
         }
   , def
         { Grp.name = "Browser"
@@ -123,12 +132,19 @@ groups = [
         , Grp.colour=yellow
         , Grp.title=const False
         , Grp.group=["qutebrowser", "Firefox", "Chromium"]
+        , Grp.flipCols=True
         }
   ]
 
 titleOverrides = Grp.titleOverrides Grp.name groups
 groupOverrides = Grp.groupOverrides Grp.name groups
 groupQuery = Grp.groupQuery groups
+
+flipgroups :: Set.Set String
+flipgroups = groups
+           & filter Grp.flipCols
+           & map Grp.name
+           & Set.fromList
 
 accentmap :: Map.Map String String
 accentmap =
@@ -147,8 +163,8 @@ myTheme = def {
          activeTextColor     = winActiveTextColor defST,
          inactiveTextColor   = winInactiveTextColor defST,
          fontName            = myFont,
-         decoHeight          = scale 24,
-         tabBorderWidth      = border
+         decoHeight          = scale 26,
+         tabBorderWidth      = scale 3
 }
 
 data MyTheme = MyTheme deriving (Read, Typeable, Show)
@@ -164,7 +180,7 @@ box b n x y =
    in hborder ++ [vborder ++ insides i ++ vborder | i <- [1 .. n]] ++ hborder
 
 ttc :: TiledTabsConfig MyTheme DefaultShrinker
-ttc =  (def::TiledTabsConfig MyTheme DefaultShrinker) { tabsTheme = myTheme, tabSpacing = 10 }
+ttc =  (def::TiledTabsConfig MyTheme DefaultShrinker) { tabsTheme = myTheme, tabSpacing = 9 }
 
 myLayout =
   workspaceDir "~" $
@@ -235,7 +251,7 @@ managementHooks =
 
 main = do
       xmproc <- runXmobar
-      spawn $ home ".fehbg"
+      spawn $ "~/.fehbg"
       xmonad -- $ dynamicProjects projects projectHooks
              $ ewmh
              $ docks def {
@@ -289,10 +305,10 @@ myKeys conf =
    , Action ["'"] "Go To Mark" (tomarks conf)
    , Action ["m"] "Mark" (makemarks conf)
    , Group  ["o","O"] "Launchers" (return ())
-     [ Action ["o"] "Open File" (spawn "stouter")
-     , Action ["O"] "Open File" (spawn "cd ~; stouter")
-     , Action ["m"] "Open Manpage" (spawn "lsman-show")
-     , Action ["p"] "Open Program" (spawn "pathlist-show")
+     [ Action ["o"] "Open File" (spawn "menu file")
+     , Action ["O"] "Open File" (spawn "cd ~; menu file")
+     , Action ["m"] "Open Manpage" (spawn "menu man")
+     , Action ["p"] "Open Program" (spawn "menu path")
      ]
    , Action ["C-o"] "Back" $ nextMatch BackwardsHistory (return True)
    , Action ["C-i"] "Back" $ nextMatch ForwardsHistory (return True)
@@ -440,7 +456,7 @@ myFocus :: Window -> X ()
 myFocus w = focus w >> (sendMessage $ RestoreMinimizedWin w)
 
 runXmobar =
-  spawnPipe $ home ".nix-profile/bin/xmobar" /./ home (".xmonad/xmobarrc")
+  spawnPipe $ "xmobar" /./ "~/.xmonad/xmobarrc"
 
 -- myMoveTo :: Int -> W.Stack Window -> W.Stack Window
 -- myMoveTo n s@W.Stack{W.up=up,W.down=down} =
@@ -468,11 +484,12 @@ xmobarHook xmproc =
       { ppOutput = hPutStrLn xmproc
       , ppCurrent =
           \n -> xmobarColor base3 (accentcolors accentmap n) $ pad $ pad n
-      , ppVisible = \x -> xmobarColor base0 inherit $ "[" <> x <> "]"
+      , ppVisible =
+          \x -> xmobarColor (accentcolors accentmap x) base3 $ pad $ "("++x++")"
       , ppHidden =
-          \x -> take 1 x & pad & xmobarColor base2 (accentcolors accentmap x)
+          \x -> take 1 x & pad & xmobarColor (accentcolors accentmap x) base3
       , ppHiddenNoWindows = const ""
-      , ppLayout = xmobarColor base2 base1 . layoutformatter
+      , ppLayout = xmobarColor base1 base2 . layoutformatter
       , ppTitle = const ""
       , ppExtras =
           [fmap (fmap (xmobarColor base0 base2 . shorten 90)) myLogTitle]
@@ -482,14 +499,14 @@ xmobarHook xmproc =
       , ppSort = DO.getSortByOrder
       }
 
-home x = "/home/alistairtpotts/" ++ x
+--home x = "$HOME" ++ x
 
 -- Default (unused) window config
 defST = def {
    winActiveColor         = yellow,
    winInactiveColor       = base0,
    winActiveBorderColor   = activeborder,
-   winInactiveBorderColor = backgroundColor,
+   winInactiveBorderColor = base3,
    winActiveTextColor     = base3,
    winInactiveTextColor   = backgroundColor}
 
@@ -503,37 +520,45 @@ setWindowBorder' c w = do
 
 themeWindow bw st w = do
   app <- groupQuery w
-  let color = accentcolors accentmap app
+  let flipcol = app `elem` flipgroups
+      color = accentcolors accentmap app
+      revcolor = winActiveTextColor st
+      bgcolor = if flipcol then revcolor else color
+      fgcolor = if flipcol then color else revcolor
       b = box 0 (scale 5)
       bx m l r = if m then []
         else [(b True False, OffsetLeft bw bw),
                 (map reverse $ b l r, OffsetRight bw bw)]
   wf <- withWindowSet (return . W.peek)
-  focus <-
-    case wf of
-      Nothing -> return []
-      Just w' ->
-        if w == w'
-          then return $ bx True False False
-          else do
-            app' <- groupQuery w'
-            return $
-              if app' == app
-                then bx False False False
-                else bx False True False
+  -- focus <-
+  --   case wf of
+  --     Nothing -> return []
+  --     Just w' ->
+  --       if w == w'
+  --         then return $ bx True False False
+  --         else do
+  --           app' <- groupQuery w'
+  --           return $
+  --             if app' == app
+  --               then bx False False False
+  --               else bx False True False
   mark <- getmarks w
   let markaddon =
         case mark of
           Nothing -> []
           Just a -> [("[" ++ [a] ++ "]", AlignRightOffset (scale 5))]
   isfocus <- (Just w ==) . W.peek <$> gets windowset
+
   setWindowBorder' (if isfocus then color else winInactiveBorderColor st) w
 
   return . Just $
     st
-      { winInactiveColor     = color
-      , winActiveColor       = color
-      , winActiveBorderColor = color
-      , winTitleIcons        = focus
+      { winInactiveColor     = bgcolor
+      , winInactiveBorderColor = backgroundColor
+      , winActiveColor       = if isfocus then color else bgcolor
+      , winActiveBorderColor = if isfocus then color else bgcolor
+      , winActiveTextColor   = if isfocus then revcolor else fgcolor
+      , winInactiveTextColor = fgcolor
+      -- , winTitleIcons        = focus
       , winTitleAddons       = markaddon
       }

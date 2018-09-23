@@ -100,11 +100,11 @@ maybeMask m xs = m ++ case xs of
 myPrompts :: XPConfig -> XWindowMap -> PromptList
 myPrompts conf  windows  = [
           Action ["w"] "Go to window" (
-                      spawn "mywmctrl -a"),
+                      spawn "menu win -a"),
                       -- windowPrompt winConf Goto windows),
           Action ["S-w"] "Bring window to master" (
                       -- windowPrompt winConf BringToMaster windows),
-                      spawn "mywmctrl -R"),
+                      spawn "menu win -R"),
           Action [] "Bring a copy" (
                       windowPrompt winConf BringCopy windows),
           Action ["M-s"] "Run (sh)" (

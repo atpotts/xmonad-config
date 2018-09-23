@@ -26,11 +26,11 @@ mergeGroupsDown :: ModifySpec
 mergeGroupsDown _ Nothing = Nothing
 mergeGroupsDown _ (Just (Stack f up [])) = Just (Stack f up [])
 mergeGroupsDown _ (Just (Stack f up (d:downs))) =
-  Just (Stack (mrg f d) up downs)
-  where mrg (G ly (Just (Stack x l r)))  (G _ (Just (Stack x' l' r'))) =
-          G ly (Just (Stack x l (r++l'++[x']++r')))
-        mrg a (G _ Nothing) = a
-        mrg (G _ Nothing) a = a
+  let (output, zero) = mrg f d
+  in Just (Stack output up (zero:downs))
+  where mrg (G ly (Just (Stack x l r)))  (G lz (Just (Stack x' l' r'))) =
+          (G ly (Just (Stack x l (r++l'++[x']++r'))), G lz Nothing)
+        mrg a b = (a,b)
 
 mergeGroupsUp :: ModifySpec
 mergeGroupsUp l = reverseZ . mergeGroupsDown l . reverseZ

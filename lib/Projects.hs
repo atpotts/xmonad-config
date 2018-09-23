@@ -30,9 +30,9 @@ projectPrompts conf = [
 --     Action ["x"] "Rename project" (renameProjectPrompt conf),
 --     Action ["X"] "Change project directory" (changeProjectDirPrompt conf),
     Action ["g"] "New Project from Directory"
-        (spawn "xmonadctl -a DIRNAME \"switch $(cd ~; realpath $(getdir))\""),
+        (spawn "xmonadctl -a DIRNAME \"switch $(cd ~; realpath $(menu directory))\""),
     Action ["G"] "New Project from Directory"
-        (spawn "xmonadctl -a DIRNAME \"rename $(cd ~; realpath $(getdir))\"")
+        (spawn "xmonadctl -a DIRNAME \"rename $(cd ~; realpath $(menu directory))\"")
     ]
 
 -- Need to manually update the project list

@@ -19,10 +19,11 @@ data GroupDefinition = GD
   , title :: String -> Bool
   , group :: [String]
   , manageHook :: ModifySpec
+  , flipCols :: Bool
   }
 
 instance Default GroupDefinition where
-  def = GD "" [] "" "#FFFFFF" (const False) ["BLANK"] (flip const)
+  def = GD "" [] "" "#FFFFFF" (const False) ["BLANK"] (flip const) False
 
 titleOverrides f = map (title &&& f)
 
