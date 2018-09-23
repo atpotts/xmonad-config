@@ -388,10 +388,10 @@ myKeys conf =
 
         -- Relative Motions - internal
         , Motion ["f"] "Swap with window N" (\n -> modgroups (rotateInGroup n))
-        , Motion ["S-r"] "Move to Group N" (\n -> modgroups (moveToGroup n))
+        , Motion ["S-c"] "Move to Group N" (\n -> modgroups (moveToGroup n))
         --- F doesn't do anything
         , Motion ["F"] "Focus to Group N" (\n -> modgroups (focusInGroup n))
-        , Motion ["S-c"] "Move Group to N" (\n -> modgroups (rotateTo n))
+        , Motion ["S-r"] "Rotate Group to N" (\n -> modgroups (rotateTo n))
         , Motion ["c"] "Move to new group N" (\n ->
             sendMessage (Modify $ moveToNewGroupN n) >>
             sendMessage Gr.Refocus)
