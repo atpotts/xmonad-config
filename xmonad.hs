@@ -329,7 +329,7 @@ myKeys conf =
    , Action [","] "Increment master" increaseNMasterGroups
    , Action ["."] "Decrement master" decreaseNMasterGroups
       -- quit, or restart
-   , Action ["S-<Backspace>"] "Quit xmonad" (io exitSuccess)
+   , Action ["Q", "S-<Backspace>"] "Quit xmonad" (io exitSuccess)
    , Action ["q"] "Restart xmonad" (spawn $
         "if type xmonad;" /./ "then xmonad --recompile && xmonad --restart;" /./
         "else xmessage xmonad not in \\$PATH: \"$PATH\"; fi")
