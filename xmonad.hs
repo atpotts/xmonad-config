@@ -15,6 +15,8 @@ import           ContribMod.Decoration
   , DefaultShrinker
   , mkSubTheme
   )
+
+
 import           ContribMod.TabGroups
 import           ContribMod.Tabbed
 import           ContribMod.GroupNavigation
@@ -35,7 +37,8 @@ import           XMonad.Actions.CycleWS
 import           XMonad.Actions.SinkAll
 import qualified XMonad.Actions.DynamicWorkspaceOrder as DO
 import           XMonad.Actions.Submap
-import           XMonad.Actions.UpdatePointer
+import           XMonad.Actions.Warp
+--import           XMonad.Actions.UpdatePointer
 
 import           XMonad.Hooks.DynamicLog
 import           XMonad.Hooks.EwmhDesktops
@@ -269,7 +272,7 @@ main = do
               modMask = cmdkey,
               workspaces = ["scratch"],
               keys =  \c -> myKeyMap "M-;" myXPConfig
-                      (sendMessage Gr.Refocus)
+                      (sendMessage Gr.Refocus >> warper)
                       (  myKeys c
                       ++ myPrompts myXPConfig windowNames
                       ++ projectPrompts (mkColor myXPConfig blue)
@@ -280,10 +283,11 @@ main = do
               handleEventHook = chdirEventHook
           }
 
+warper = warpToWindow 0 0
+
 myKeys :: XConfig Layout -> PromptList
 myKeys conf =
    [ Action ["e"] "Switch to Workspace 0" $ do
-
       w <- screenWorkspace 0
       whenJust w (windows . W.view)
    , Action ["u"] "switch to workspace 1" $ do
@@ -295,7 +299,7 @@ myKeys conf =
    , Action ["U"] "switch to workspace 1" $ do
       w <- screenWorkspace 1
       whenJust w (windows . W.shift)
-   , Action ["S-<Return>"] "Launch terminal" (spawn $ XMonad.terminal conf)
+   , Action ["S-<Return>"] "Launch terminal" (spawn $ XMonad.terminal conf) 
    , Action ["d"] "Close window" (kill >> sendMessage Gr.Refocus)
    , Action ["M-<Return>"] "Next layout" nextOuterLayout
       --media keys
@@ -334,7 +338,7 @@ myKeys conf =
     -- reapplying themes is necessary when switching workspace
     --   was c >> retheme - should no longer be necsessary
     ++ (
-      map (\(a,b,c) -> Action a b c)
+      map (\(a,b,c) -> Action a b (c>>warper))
        [ ( ["C-<L>", "C-h"]
          , "Send to previous project"
          , DO.shiftTo Prev HiddenNonEmptyWS)
