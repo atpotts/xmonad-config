@@ -6,16 +6,19 @@ import MyPrompts
 import XMonad.Prompt.Directory
 
 import Graphics.X11.Types
+import System.IO (hClose)
+import Control.Exception (bracket)
 
 import Data.Map.Strict (Map)
 import Data.Monoid (All(..))
 import qualified Data.Map.Strict as Map
 import XMonad.Actions.DynamicWorkspaces
 import qualified XMonad.Util.ExtensibleState as XS
+import XMonad.Util.Run
 
 import System.FilePath
 import XMonad.Hooks.ServerMode
-
+import qualified XMonad.StackSet as W
 
 import System.Directory ( setCurrentDirectory, getCurrentDirectory )
 import Control.Monad ( when )
@@ -24,40 +27,76 @@ import XMonad hiding ( focus )
 import XMonad.Layout.LayoutModifier
 import XMonad.StackSet ( tag, currentTag )
 
+import XMonad.Prompt.Input
+import Colors
+import MyGroups (groups, accentmap)
+
+import Data.Function ((&))
 
 projectPrompts :: XPConfig -> PromptList
-projectPrompts conf = [
---     Action ["x"] "Rename project" (renameProjectPrompt conf),
---     Action ["X"] "Change project directory" (changeProjectDirPrompt conf),
-    Action ["g"] "New Project from Directory"
-        (spawn "xmonadctl -a DIRNAME \"switch $(cd ~; realpath $(menu directory))\""),
-    Action ["G"] "New Project from Directory"
-        (spawn "xmonadctl -a DIRNAME \"rename $(cd ~; realpath $(menu directory))\"")
+projectPrompts conf =
+  --     Action ["x"] "Rename project" (renameProjectPrompt conf),
+  --     Action ["X"] "Change project directory" (changeProjectDirPrompt conf),
+   [Action ["G"] "New Project from Directory"
+        (spawn "xmonadctl -a NEW_WORKSPACE $(cd ~; realpath $(menu directory))")
+
+   ,Action ["g"] "Switch Project" $ do
+         w <- workspacenames
+         liftIO $ bracket
+          (spawnPipe $ "menu ! xmonadctl -a SWITCH_WORKSPACE")
+          hClose
+          (flip hPutStr (unlines w))
+
+    ,Action ["X"] "Move to Directory"
+        (spawn "xmonadctl -a MOVE_WORKSPACE $(cd ~; realpath $(menu directory))")
+
+    ,Action ["x"] "Rename Project" $ do
+         newname <- inputPrompt myXPConfig "rename workspace >"
+         case newname of
+          Just n -> renameWorkspaceByName n
+          Nothing -> return ()
     ]
 
+
 -- Need to manually update the project list
+
+workspacenames :: X [String]
+workspacenames = do
+    ws <- gets windowset
+    return $ (map W.workspace (W.current ws : W.visible ws) ++ W.hidden ws)
+      & map (\x -> let t = W.tag x
+                in "$(fgcolor '"++accentcolors accentmap t++"' "++t++")")
+
 
 newDir :: XPConfig -> (String -> X ()) -> X ()
 newDir conf s =  directoryPrompt conf "Directory: " $ goDir s
 
 goDir :: (String -> X()) -> String -> X ()
 goDir s x =
-      let fn = case takeFileName $ takeDirectory (x++"/") of
-                  ('.':xs) -> xs
-                  [] -> "scratch"
-                  xs -> xs
-      in do
-         s fn
+      if x == ""
+        then return ()
+        else do
+         s x
          sendMessage $ Chdir x
 
 
 chdirEventHook :: Event -> X All
-chdirEventHook =  serverModeEventHookF "DIRNAME" $ \x ->
-    let (cmd,dir) = span (/=' ') x
-        s = case cmd of
-              "switch" -> addWorkspace
-              _ -> renameWorkspaceByName
-    in goDir s (dropWhile (==' ') dir)
+chdirEventHook event =  foldr mappend mempty $ map (\x -> x event)
+  [  serverModeEventHookF "NEW_WORKSPACE" $ goDir addWorkspace
+  ,  serverModeEventHookF "MOVE_WORKSPACE" $ goDir (const (return ()))
+  ,  serverModeEventHookF "RENAME_WORKSPACE" $ renameWorkspaceByName
+  ,  serverModeEventHookF  "SWITCH_WORKSPACE" $ addWorkspace
+  ]
+
+
+
+cleanupworkspaces :: X ()
+cleanupworkspaces = withWindowSet $ \ws ->
+  flip mapM_ (W.hidden ws) $ \w ->
+    case W.stack w of
+      Nothing -> do
+        removeEmptyWorkspaceByTag (W.tag w)
+      _ -> return ()
 
 
 -----------------------------------------

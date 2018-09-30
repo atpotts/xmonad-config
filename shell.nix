@@ -5,7 +5,7 @@ stdenv.mkDerivation {
   buildInputs = [
    nix
    hie.hie82
-   (haskellPackages.ghcWithPackages
+   (haskellPackages.ghcWithHoogle
         (haskellPackages: with haskellPackages;
         [
           cabal-install

@@ -24,7 +24,7 @@
 
 module ContribMod.GroupNavigation ( -- * Usage
                                         -- $usage
-                                        Direction
+                                        Direction (..)
                                       , Onward (..)
                                       , History (..)
                                       , nextMatch

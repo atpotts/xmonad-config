@@ -23,13 +23,19 @@ module MyPrompts (
   where
 
 import Colors
+import Groups (groupQuery)
+import MyGroups
+import qualified Data.Map as Map
+import ContribMod.GroupNavigation
 
 import Data.Function ((&))
 import Data.List (intercalate, sort, sortOn, nub)
 import Data.Char (isUpper, toLower)
+import Data.Maybe (fromMaybe)
+import Data.Foldable (toList)
 import Control.Applicative (liftA2)
 import Control.Arrow ((>>>))
-import Control.Monad (replicateM_)
+import Control.Monad (replicateM_, forM)
 import qualified Data.Map as M
 import Data.Maybe (catMaybes, isJust)
 import Graphics.X11.Types
@@ -42,6 +48,12 @@ import XMonad.Prompt.RunOrRaise
 import XMonad.Prompt.Shell
 import XMonad.Prompt.Window
 import XMonad.Util.EZConfig
+import qualified XMonad.StackSet as W
+
+import System.FilePath (takeBaseName)
+import XMonad.Util.Run (spawnPipe, hPutStr)
+import System.IO (hClose)
+import Control.Exception (bracket)
 
 
 data KeyMap = Action [String] String (X())
@@ -98,25 +110,64 @@ maybeMask m xs = m ++ case xs of
   xs' -> xs'
 
 myPrompts :: XPConfig -> XWindowMap -> PromptList
-myPrompts conf  windows  = [
-          Action ["w"] "Go to window" (
-                      spawn "menu win -a"),
+myPrompts conf  windows  = 
+        [ Action ["w"] "Go to window" $ do
+                      windows <- getallwindows
+                      liftIO $ bracket (spawnPipe "menu ! wmctrl -ia")
+                        hClose
+                        (flip hPutStr (unlines windows))
                       -- windowPrompt winConf Goto windows),
-          Action ["S-w"] "Bring window to master" (
-                      -- windowPrompt winConf BringToMaster windows),
-                      spawn "menu win -R"),
-          Action [] "Bring a copy" (
-                      windowPrompt winConf BringCopy windows),
-          Action ["M-s"] "Run (sh)" (
-                      shellPrompt shellConf),
-          Action ["M-S-s"] "Run (term)" (
+        , Action ["S-w"] "Bring window to master" $ do
+                      windows <- getallwindows
+                      liftIO $ bracket (spawnPipe "menu ! wmctrl -iR")
+                        hClose
+                        (flip hPutStr (unlines windows))
+        , Action [] "Bring a copy" (
+                      windowPrompt winConf BringCopy windows)
+        , Action ["M-s"] "Run (sh)" (
+                      shellPrompt shellConf)
+        , Action ["M-S-s"] "Run (term)" (
                       prompt "urxvt -e" termConf)
-          ]
+        ]
   where shellConf = mkColor nohlconf yellow
         termConf  = mkColor nohlconf red
         winConf   = mkColor conf violet
         runConf   = mkColor conf green
         nohlconf = conf {alwaysHighlight = False}
+
+
+workspacemap :: X (Map.Map Window String)
+workspacemap = withWindowSet $ \ws -> return $
+  let workspaces = (map W.workspace (W.current ws : W.visible ws) ++ W.hidden ws)
+  in Map.fromList $ flip concatMap workspaces $ \ws ->
+      map (,W.tag ws) (fromMaybe [] $ W.integrate <$> W.stack ws)
+
+taking :: Int -> String -> String
+taking 0 xs = ""
+taking n "" = ' ':taking (n-1) ""
+taking n (x:xs) = x:taking (n-1) xs
+
+fgcolor :: String -> String -> String
+fgcolor a b = "\"$(fgcolor '"++a++"' \""++b++"\")\""
+
+bold :: String -> String
+bold a = "\"$(bold \""++a++"\")\""
+
+a /./ b = a ++ " " ++ b
+
+getallwindows :: X [String]
+getallwindows = do
+  wsmap <- workspacemap
+  windows <- orderedWindowList AllHistory
+  forM (toList windows) $ \w -> do
+    let workspace = fromMaybe "unknown" $ Map.lookup w wsmap
+    group <- groupQuery groups w
+    title <- runQuery title w
+    return $ fgcolor base1 (taking 10 (show w))
+          /./ (fgcolor (accentcolors accentmap workspace) (taking 8 (takeBaseName workspace)))
+          /./ (bold (fgcolor (accentcolors accentmap group) (
+                  title ++ " ("++group++")")))
+
 
 
 fuzzysearch :: Double -> String -> String -> Maybe Double

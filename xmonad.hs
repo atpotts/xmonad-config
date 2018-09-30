@@ -28,7 +28,8 @@ import           WindowNames
 import           WindowTags
 import           GroupMotions
 import qualified Groups as Grp
-import           Groups (GroupDefinition(GD))
+import           MyGroups (groups, accentmap, myTerminal)
+import           MyXmobar (myxmobar, launchxmobar)
 
 import XMonad
 import qualified XMonad.StackSet as W
@@ -36,13 +37,14 @@ import qualified XMonad.StackSet as W
 import           XMonad.Actions.CycleWS
 import           XMonad.Actions.SinkAll
 import qualified XMonad.Actions.DynamicWorkspaceOrder as DO
+import           XMonad.Actions.DynamicWorkspaces (removeEmptyWorkspaceByTag)
 import           XMonad.Actions.Submap
 import           XMonad.Actions.Warp
+import           XMonad.Actions.WindowBringer (bringWindow)
 --import           XMonad.Actions.UpdatePointer
 
-import           XMonad.Hooks.DynamicLog
+
 import           XMonad.Hooks.EwmhDesktops
-import           XMonad.Hooks.ManageDocks
 import           XMonad.Hooks.Place
 
 import qualified XMonad.Layout.BoringWindows as B
@@ -54,11 +56,11 @@ import           XMonad.Layout.Spacing (spacing)
 import qualified ContribMod.LayoutGroups as Gr
 import qualified ContribMod.LayoutGroupHelpers as G
 import           XMonad.Layout.TwoPane
+import           XMonad.Hooks.ManageDocks (avoidStruts) -- need to u/s types!
 
 import           XMonad.Util.EZConfig (mkKeymap)
 import           XMonad.Util.Font
 import           XMonad.Util.Image
-import           XMonad.Util.Loggers
 import           XMonad.Util.NamedWindows (getName)
 import           XMonad.Util.Run (spawnPipe)
 
@@ -70,7 +72,7 @@ import           Control.Applicative (liftA2)
 
 import           Data.Char
 import           Data.Function ((&))
-import           Data.Maybe (catMaybes, fromMaybe)
+import           Data.Maybe (catMaybes, fromMaybe, listToMaybe)
 import           Data.Monoid ((<>))
 import           Data.List (break, isInfixOf, isPrefixOf, isSuffixOf,nub,
                             stripPrefix, unfoldr)
@@ -83,9 +85,7 @@ import           System.IO
 activeborder    = base01
 backgroundColor = base2
 inactiveborder  = base2
-termcmd         = "urxvt"
-myTerminal      = termcmd /./ "-e zsh"
-launchinterm x  = (("urxvt --name "++x++" -e ")++)
+
 border :: Integral a => a
 border          = scale 2
 
@@ -96,49 +96,6 @@ data WindowManage = WM {
 instance Default WindowManage where def = let r = return () in WM r r
 
 
-groups :: [GroupDefinition]
-groups = [
-    def { Grp.name="Shell"
-        , Grp.keys=["t"]
-        , Grp.spawn=myTerminal
-        , Grp.colour=base1
-        , Grp.title=(isPrefixOf "zsh:")
-        , Grp.manageHook=Gr.moveToNewGroupDown
-        , Grp.flipCols=True
-        }
-  , def { Grp.name="Terminal"
-        , Grp.keys=["T"]
-        , Grp.spawn=myTerminal
-        , Grp.colour=blue
-        , Grp.group=["URxvt", "Termite"]
-        , Grp.manageHook=Gr.moveToNewGroupDown
-        , Grp.flipCols=True
-        }
-  , def { Grp.name="Terminal Keep"
-        , Grp.colour=base1
-        , Grp.title=(=="<<keep>>")
-        , Grp.flipCols=True
-        }
-  , def { Grp.name="Editor"
-        , Grp.keys=["e"]
-        , Grp.spawn=launchinterm "Kakoune" "kak"
-        , Grp.colour=green
-        , Grp.title= \x -> "Kakoune" `isSuffixOf` x || "VIM" `isSuffixOf` x
-                          || ("**" `isPrefixOf` x && "EDITOR" `isInfixOf` x)
-        , Grp.group=["Emacs", "Kakoune"]
-        , Grp.flipCols=True
-        }
-  , def
-        { Grp.name = "Browser"
-        , Grp.keys=["b"]
-        , Grp.spawn="qutebrowser"
-        , Grp.colour=yellow
-        , Grp.title=const False
-        , Grp.group=["qutebrowser", "Firefox", "Chromium"]
-        , Grp.flipCols=True
-        }
-  ]
-
 titleOverrides = Grp.titleOverrides Grp.name groups
 groupOverrides = Grp.groupOverrides Grp.name groups
 groupQuery = Grp.groupQuery groups
@@ -148,11 +105,6 @@ flipgroups = groups
            & filter Grp.flipCols
            & map Grp.name
            & Set.fromList
-
-accentmap :: Map.Map String String
-accentmap =
-  Map.fromList $
-    ("scratch", magenta) : map (Grp.name &&& Grp.colour) groups
 
 myTheme :: Theme MyTheme
 myTheme = def {
@@ -190,17 +142,6 @@ myLayout =
   minimize $
   tallTabs 0 $ ttc
       `newTabsShrinker` MyShrinker "/"
-
-isMirror x = isInfixOf "Mirror" x || isInfixOf "Horizontal" x
-
-layoutformatter s
-  | "Full" `isInfixOf` s = "      "
-  | "TwoPane" `isInfixOf` s =
-    if isMirror s
-      then "━━━"
-      else " ┃ "
-  | isMirror s = "━┯━"
-  | otherwise = " ┠─"
 
 -- key overrides
 cmdkey = mod3Mask
@@ -253,16 +194,15 @@ managementHooks =
     ]
 
 main = do
-      xmproc <- runXmobar
       spawn $ "~/.fehbg"
       xmonad -- $ dynamicProjects projects projectHooks
              $ ewmh
-             $ docks def {
+             $ myxmobar
+             $ def {
               terminal   = myTerminal,
-              manageHook = manageDocks <+> manageHook def
-                                       <+> composeAll managementHooks,
+              manageHook = manageHook def <+> composeAll managementHooks,
               layoutHook = B.boringWindows $ avoidStruts myLayout,
-              logHook    = xmobarHook xmproc <+> historyHook,
+              logHook    = historyHook,
               startupHook = do
                   startupHook def
                   setbg magenta backgroundColor,
@@ -285,21 +225,21 @@ main = do
 
 warper = warpToWindow 0 0
 
+
+
 myKeys :: XConfig Layout -> PromptList
 myKeys conf =
-   [ Action ["e"] "Switch to Workspace 0" $ do
-      w <- screenWorkspace 0
-      whenJust w (windows . W.view)
-   , Action ["u"] "switch to workspace 1" $ do
-      w <- screenWorkspace 1
-      whenJust w (windows . W.view)
-   , Action ["E"] "switch to workspace 0" $ do
-      w <- screenWorkspace 0
-      whenJust w (windows . W.shift)
-   , Action ["U"] "switch to workspace 1" $ do
-      w <- screenWorkspace 1
-      whenJust w (windows . W.shift)
-   , Action ["S-<Return>"] "Launch terminal" (spawn $ XMonad.terminal conf) 
+   [ Action ["e"] "Switch to other screen" $ do
+      withOtherScreen W.view
+   , Action ["E"] "Swap with other screen" $ do
+      withOtherScreen W.greedyView
+   , Action ["u"] "Send to other screen" $ withFocused $ \w -> do
+      withOtherScreen W.view
+      windows $ bringWindow w
+   , Action ["U"] "switch to workspace 1" $ withFocused $ \w -> do
+      withOtherScreen W.greedyView
+      windows $ bringWindow w
+   , Action ["S-<Return>"] "Launch terminal" (spawn $ XMonad.terminal conf)
    , Action ["d"] "Close window" (kill >> sendMessage Gr.Refocus)
    , Action ["M-<Return>"] "Next layout" nextOuterLayout
       --media keys
@@ -335,26 +275,25 @@ myKeys conf =
         "else xmessage xmonad not in \\$PATH: \"$PATH\"; fi")
    , Action ["S-,", "M-<"] "Cycle within app" cycleapp
     ]
-    -- reapplying themes is necessary when switching workspace
     --   was c >> retheme - should no longer be necsessary
     ++ (
-      map (\(a,b,c) -> Action a b (c>>warper))
+      map (\(a,b,c) -> Action a b (c>>warper>>cleanupworkspaces))
        [ ( ["C-<L>", "C-h"]
          , "Send to previous project"
-         , DO.shiftTo Prev HiddenNonEmptyWS)
+         , DO.shiftTo Prev NonEmptyWS)
        , ( ["C-<R>", "C-l"]
          , "Send to next project"
-         , DO.shiftTo Next HiddenNonEmptyWS)
+         , DO.shiftTo Next NonEmptyWS)
        , (["M-<L>", "h"], "Previous project",
            DO.moveTo Prev HiddenNonEmptyWS)
        , (["M-<R>", "l"], "Next project",
            DO.moveTo Next HiddenNonEmptyWS)
        , ( ["M-S-<L>", "H"]
          , "Swap project Left"
-         , DO.swapWith Prev HiddenNonEmptyWS)
+         , DO.swapWith Prev NonEmptyWS)
        , ( ["M-S-<R>", "L"]
          , "Swap project Right"
-         , DO.swapWith Next HiddenNonEmptyWS)
+         , DO.swapWith Next NonEmptyWS)
        ])
      ++ systemKeys
      ++
@@ -441,7 +380,7 @@ inWorkSpace :: Query Bool
 inWorkSpace = do
   w <- ask
   ws <- liftX $ gets windowset
-  return $ w `elem` windowList ws
+  return $ w `elem` allWindowList ws
 
 pullToMaster :: Eq a => Query a -> X()
 pullToMaster q = (withWindowSet $ traverse x . W.peek) >> return ()
@@ -459,49 +398,27 @@ pullToMaster q = (withWindowSet $ traverse x . W.peek) >> return ()
 myFocus :: Window -> X ()
 myFocus w = focus w >> (sendMessage $ RestoreMinimizedWin w)
 
-runXmobar =
-  spawnPipe $ "xmobar" /./ "~/.xmonad/xmobarrc"
+withOtherScreen f = do
+  otherscreen <- gets (listToMaybe . W.visible . windowset)
+  whenJust otherscreen $ windows . f . W.tag . W.workspace
 
 -- myMoveTo :: Int -> W.Stack Window -> W.Stack Window
 -- myMoveTo n s@W.Stack{W.up=up,W.down=down} =
 --     let (newup,newdown) = splitAt (n-1) $ reverse up ++ down
 --     in s{W.up=reverse newup,W.down=newdown}
 
+allWindowList :: WindowSet -> [Window]
+allWindowList xs = windowList xs ++ otherWindowList xs
 
 windowList :: WindowSet -> [Window]
 windowList =
-  W.current >>> W.workspace >>> W.stack >>> fmap W.integrate >>> foldr const []
+  W.current >>> listifyWorkspace
 
-myLogTitle :: Logger
-myLogTitle = withWindowSet $ traverse x . W.peek
-  where
-    x w = do
-      app <- runQuery className w
-      thetitle <- runQuery title w
-      g <- groupQuery w
-      return $
-        xmobarColor (accentcolors accentmap g) inherit app ++ ": " ++ thetitle
+listifyWorkspace = W.workspace >>> W.stack >>> fmap W.integrate >>> foldr const []
 
-xmobarHook xmproc =
-  dynamicLogWithPP
-    xmobarPP
-      { ppOutput = hPutStrLn xmproc
-      , ppCurrent =
-          \n -> xmobarColor base3 (accentcolors accentmap n) $ pad $ pad n
-      , ppVisible =
-          \x -> xmobarColor (accentcolors accentmap x) base3 $ pad $ "("++x++")"
-      , ppHidden =
-          \x -> take 1 x & pad & xmobarColor (accentcolors accentmap x) base3
-      , ppHiddenNoWindows = const ""
-      , ppLayout = xmobarColor base1 base2 . layoutformatter
-      , ppTitle = const ""
-      , ppExtras =
-          [fmap (fmap (xmobarColor base0 base2 . shorten 90)) myLogTitle]
-      , ppSep = " "
-      , ppWsSep = ""
-      , ppOrder = \(layout:workspaces:title:rest) -> workspaces : layout : rest
-      , ppSort = DO.getSortByOrder
-      }
+otherWindowList :: WindowSet -> [Window]
+otherWindowList =
+  W.visible >>> concatMap (listifyWorkspace)
 
 --home x = "$HOME" ++ x
 
@@ -566,3 +483,6 @@ themeWindow bw st w = do
       -- , winTitleIcons        = focus
       , winTitleAddons       = markaddon
       }
+
+
+
