@@ -147,11 +147,16 @@ taking 0 xs = ""
 taking n "" = ' ':taking (n-1) ""
 taking n (x:xs) = x:taking (n-1) xs
 
+retaking n x = reverse (taking n (reverse x))
+
 fgcolor :: String -> String -> String
 fgcolor a b = "\"$(fgcolor '"++a++"' \""++b++"\")\""
 
 bold :: String -> String
 bold a = "\"$(bold \""++a++"\")\""
+
+italic :: String -> String
+italic a = "\"$(italic \""++a++"\")\""
 
 a /./ b = a ++ " " ++ b
 
@@ -163,10 +168,10 @@ getallwindows = do
     let workspace = fromMaybe "unknown" $ Map.lookup w wsmap
     group <- groupQuery groups w
     title <- runQuery title w
-    return $ fgcolor base1 (taking 10 (show w))
-          /./ (fgcolor (accentcolors accentmap workspace) (taking 8 (takeBaseName workspace)))
-          /./ (bold (fgcolor (accentcolors accentmap group) (
-                  title ++ " ("++group++")")))
+    return $ fgcolor base1 (retaking 10 (show w))
+          /./ fgcolor (accentcolors accentmap workspace) (taking 8 (takeBaseName workspace))
+          /./ fgcolor base0 (retaking 8 group)
+          /./ bold (fgcolor (accentcolors accentmap group) title)
 
 
 
